@@ -94,6 +94,12 @@ extern device::Device *PX4IO_serial_interface() weak_function;
 #define PX4IO_SET_DEBUG			_IOC(0xff00, 0)
 #define PX4IO_INAIR_RESTART_ENABLE	_IOC(0xff00, 1)
 
+#ifndef ARDUPILOT_BUILD
+# define RC_HANDLING_DEFAULT false
+#else
+# define RC_HANDLING_DEFAULT true
+#endif
+
 /**
  * The PX4IO class.
  *
@@ -429,7 +435,7 @@ PX4IO::PX4IO(device::Device *interface) :
 	_max_relays(0),
 	_max_transfer(16),	/* sensible default */
 	_update_interval(0),
-	_rc_handling_disabled(false),
+	_rc_handling_disabled(RC_HANDLING_DEFAULT),
 	_task(-1),
 	_task_should_exit(false),
 	_mavlink_fd(-1),
