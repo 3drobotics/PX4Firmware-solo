@@ -269,6 +269,7 @@ private:
 	int			_t_actuator_armed;	///< system armed control topic
 	int 			_t_vehicle_control_mode;///< vehicle control mode topic
 	int			_t_param;		///< parameter update topic
+	int			_t_vehicle_command;	///< vehicle command topic
 
 	/* advertised topics */
 	orb_advert_t 		_to_input_rc;		///< rc inputs from io
@@ -492,6 +493,7 @@ PX4IO::PX4IO(device::Device *interface) :
 	_t_actuator_armed(-1),
 	_t_vehicle_control_mode(-1),
 	_t_param(-1),
+	_t_vehicle_command(-1),
 	_to_input_rc(0),
 	_to_actuators_effective(0),
 	_to_outputs(0),
@@ -788,16 +790,20 @@ PX4IO::task_main()
 	_t_param = orb_subscribe(ORB_ID(parameter_update));
 	orb_set_interval(_t_param, 500);		/* 2Hz update rate max. */
 
+	_t_vehicle_command = orb_subscribe(ORB_ID(vehicle_command));
+	orb_set_interval(_t_param, 1000);		/* 1Hz update rate max. */
+
 	if ((_t_actuators < 0) ||
 		(_t_actuator_armed < 0) ||
 		(_t_vehicle_control_mode < 0) ||
-		(_t_param < 0)) {
+		(_t_param < 0) ||
+		(_t_vehicle_command < 0)) {
 		log("subscription(s) failed");
 		goto out;
 	}
 
 	/* poll descriptor */
-	pollfd fds[4];
+	pollfd fds[5];
 	fds[0].fd = _t_actuators;
 	fds[0].events = POLLIN;
 	fds[1].fd = _t_actuator_armed;
@@ -806,8 +812,10 @@ PX4IO::task_main()
 	fds[2].events = POLLIN;
 	fds[3].fd = _t_param;
 	fds[3].events = POLLIN;
+	fds[4].fd = _t_vehicle_command;
+	fds[4].events = POLLIN;
 
-	debug("ready");
+	log("ready");
 
 	/* lock against the ioctl handler */
 	lock();
@@ -851,9 +859,17 @@ PX4IO::task_main()
 		if (fds[4].revents & POLLIN) {
 			struct vehicle_command_s cmd;
 			orb_copy(ORB_ID(vehicle_command), _t_vehicle_command, &cmd);
-			// Check for a DSM pairing command
 			if ((cmd.command == VEHICLE_CMD_START_RX_PAIR) && (cmd.param1== 0.0f)) {
-				dsm_bind_ioctl((cmd.param2 == 0.0f) || (cmd.param2 == 1.0f), cmd.param2 == 0.0f);
+				if (!(_status & PX4IO_P_STATUS_FLAGS_OUTPUTS_ARMED)) {
+					if ((cmd.param2 == 0.0f) || (cmd.param2 == 1.0f)) {
+						mavlink_log_info(mavlink_fd, "[IO] binding dsm%c rx", (cmd.param2 == 0.0f) == 1 ? '2' : 'x');
+						ioctl(nullptr, DSM_BIND_START, (cmd.param2 == 0.0f) ? 3 : 7);
+					} else {
+						mavlink_log_info(mavlink_fd, "[IO] invalid bind type, bind request rejected");
+					}
+				} else {
+					mavlink_log_info(mavlink_fd, "[IO] system armed, bind request rejected"); 
+				}
 			}
 		}
 
