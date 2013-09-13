@@ -437,6 +437,11 @@ private:
 	void			io_handle_battery(uint16_t vbatt, uint16_t ibatt);
 
 	/**
+	 * @param dsmMode	0:dsm2, 1:dsmx
+	 */
+	void			dsm_bind_ioctl(int dsmMode);
+
+	/**
 	 * Handle a servorail update from IO.
 	 *
 	 * Publish servo rail information if necessary.
@@ -829,6 +834,16 @@ PX4IO::task_main()
 		if ((fds[1].revents & POLLIN) || (fds[2].revents & POLLIN))
 			io_set_arming_state();
 
+		/* if we have a vehicle command, handle it */
+		if (fds[4].revents & POLLIN) {
+			struct vehicle_command_s cmd;
+			orb_copy(ORB_ID(vehicle_command), _t_vehicle_command, &cmd);
+			// Check for a DSM pairing command
+			if ((cmd.command == VEHICLE_CMD_START_RX_PAIR) && (cmd.param1== 0.0f)) {
+				dsm_bind_ioctl((int)cmd.param2);
+			}
+		}
+
 		/*
 		 * If it's time for another tick of the polling status machine,
 		 * try it now.
@@ -865,7 +880,7 @@ PX4IO::task_main()
 
 				// See if bind parameter has been set, and reset it to 0
 				param_get(dsm_bind_param = param_find("RC_DSM_BIND"), &dsm_bind_val);
-				if (dsm_bind_val > -1) {
+				if (dsm_bind_val) {
 					dsm_bind_ioctl(dsm_bind_val);
 					dsm_bind_val = -1;
 					param_set(dsm_bind_param, &dsm_bind_val);
@@ -1177,9 +1192,9 @@ PX4IO::io_handle_status(uint16_t status)
 void
 PX4IO::dsm_bind_ioctl(int dsmMode)
 {
-	if (!(_status & PX4IO_P_STATUS_FLAGS_SAFETY_OFF)) {
+	if (!(_status & PX4IO_P_STATUS_FLAGS_OUTPUTS_ARMED)) {
 		/* 0: dsm2, 1:dsmx */
-		if ((dsmMode == 0) || (dsmMode == 1)) {
+		if ((dsmMode >= 0) && (dsmMode <= 1)) {
 			mavlink_log_info(_thread_mavlink_fd, "[IO] binding dsm%c rx", (dsmMode == 0) ? '2' : 'x');
 			ioctl(nullptr, DSM_BIND_START, (dsmMode == 0) ? DSM2_BIND_PULSES : DSMX_BIND_PULSES);
 		} else {
@@ -2110,9 +2125,9 @@ bind(int argc, char *argv[])
 		errx(0, "needs argument, use dsm2 or dsmx");
 
 	if (!strcmp(argv[2], "dsm2"))
-		pulses = 3;
+		pulses = DSM2_BIND_PULSES;
 	else if (!strcmp(argv[2], "dsmx"))
-		pulses = 7;
+		pulses = DSMX_BIND_PULSES;
 	else 
 		errx(1, "unknown parameter %s, use dsm2 or dsmx", argv[2]);
 	if (g_dev->system_status() & PX4IO_P_STATUS_FLAGS_SAFETY_OFF) 
