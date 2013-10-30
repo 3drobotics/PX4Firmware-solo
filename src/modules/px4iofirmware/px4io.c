@@ -114,6 +114,13 @@ show_debug_messages(void)
 	}
 }
 
+static void
+heartbeat_blink(void)
+{
+	static bool heartbeat = false;
+	LED_BLUE(heartbeat = !heartbeat);
+}
+
 int
 user_start(int argc, char *argv[])
 {
@@ -195,6 +202,7 @@ user_start(int argc, char *argv[])
 	 */
 
 	uint64_t last_debug_time = 0;
+        uint64_t last_heartbeat_time = 0;
 	for (;;) {
 
 		/* track the rate at which the loop is running */
@@ -209,6 +217,11 @@ user_start(int argc, char *argv[])
 		perf_begin(controls_perf);
 		controls_tick();
 		perf_end(controls_perf);
+
+                if ((hrt_absolute_time() - last_heartbeat_time) > 250*1000) {
+                    last_heartbeat_time = hrt_absolute_time();
+                    heartbeat_blink();
+                }
 
 #if 0
 		/* check for debug activity */
