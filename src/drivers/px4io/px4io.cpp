@@ -3263,7 +3263,23 @@ px4io_main(int argc, char *argv[])
 		exit(0);
 	}
 
+	if (!strcmp(argv[1], "safety_arm")) {
+		int ret = g_dev->ioctl(NULL, PWM_SERVO_SET_FORCE_SAFETY_OFF, 0);
+		if (ret != OK) {
+			printf("failed to arm px4io\n");
+			exit(1);
+		}
+		exit(0);
+	}
 
+	if (!strcmp(argv[1], "safety_disarm")) {
+		int ret = g_dev->ioctl(NULL, PWM_SERVO_SET_FORCE_SAFETY_ON, 0);
+		if (ret != OK) {
+			printf("failed to disarm px4io\n");
+			exit(1);
+		}
+		exit(0);
+	}
 
 	if (!strcmp(argv[1], "recovery")) {
 
