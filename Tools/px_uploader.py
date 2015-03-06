@@ -163,17 +163,17 @@ class uploader(object):
         GET_CHIP        = b'\x2c'     # rev5+  , get chip version
         SET_BOOT_DELAY  = b'\x2d'     # rev5+  , set boot delay
         REBOOT          = b'\x30'
-        
+
         INFO_BL_REV     = b'\x01'        # bootloader protocol revision
-        BL_REV_MIN      = 2             # minimum supported bootloader protocol 
-        BL_REV_MAX      = 4             # maximum supported bootloader protocol 
+        BL_REV_MIN      = 2             # minimum supported bootloader protocol
+        BL_REV_MAX      = 4             # maximum supported bootloader protocol
         INFO_BOARD_ID   = b'\x02'        # board type
         INFO_BOARD_REV  = b'\x03'        # board revision
         INFO_FLASH_SIZE = b'\x04'        # max firmware size in bytes
 
         PROG_MULTI_MAX  = 60            # protocol max is 255, must be multiple of 4
         READ_MULTI_MAX  = 60            # protocol max is 255, something overflows with >= 64
-        
+
         NSH_INIT        = bytearray(b'\x0d\x0d\x0d')
         NSH_REBOOT_BL   = b"reboot -b\n"
         NSH_REBOOT      = b"reboot\n"
@@ -312,12 +312,12 @@ class uploader(object):
 
         # send a PROG_MULTI command to write a collection of bytes
         def __program_multi(self, data):
-                
+
                 if runningPython3 == True:
                     length = len(data).to_bytes(1, byteorder='big')
                 else:
                     length = chr(len(data))
-            
+
                 self.__send(uploader.PROG_MULTI)
                 self.__send(length)
                 self.__send(data)
@@ -326,12 +326,12 @@ class uploader(object):
 
         # verify multiple bytes in flash
         def __verify_multi(self, data):
-            
+
                 if runningPython3 == True:
                     length = len(data).to_bytes(1, byteorder='big')
                 else:
                     length = chr(len(data))
-                
+
                 self.__send(uploader.READ_MULTI)
                 self.__send(length)
                 self.__send(uploader.EOC)
@@ -394,7 +394,7 @@ class uploader(object):
         def __verify_v3(self, label, fw):
                 print("\n", end='')
                 self.__drawProgressBar(label, 1, 100)
-                expect_crc = fw.crc(self.fw_maxsize)                
+                expect_crc = fw.crc(self.fw_maxsize)
                 self.__send(uploader.GET_CRC
                             + uploader.EOC)
                 report_crc = self.__recv_int()
@@ -427,6 +427,42 @@ class uploader(object):
                 self.board_rev = self.__getInfo(uploader.INFO_BOARD_REV)
                 self.fw_maxsize = self.__getInfo(uploader.INFO_FLASH_SIZE)
 
+        def otp_read(self):
+            """Read and display otp data"""
+            # OTP added in v4:
+            if self.bl_rev > 3:
+                for byte in range(0,32*6,4):
+                    x = self.__getOTP(byte)
+                    self.otp  = self.otp + x
+                    print(binascii.hexlify(x).decode('Latin-1') + ' ', end='')
+                # see src/modules/systemlib/otp.h in px4 code:
+                self.otp_id = self.otp[0:4]
+                self.otp_idtype = self.otp[4:5]
+                self.otp_vid = self.otp[8:4:-1]
+                self.otp_pid = self.otp[12:8:-1]
+                self.otp_coa = self.otp[32:160]
+                # show user:
+                try:
+                        print("type: " + self.otp_id.decode('Latin-1'))
+                        print("idtype: " + binascii.b2a_qp(self.otp_idtype).decode('Latin-1'))
+                        print("vid: " + binascii.hexlify(self.otp_vid).decode('Latin-1'))
+                        print("pid: "+ binascii.hexlify(self.otp_pid).decode('Latin-1'))
+                        print("coa: "+ binascii.b2a_base64(self.otp_coa).decode('Latin-1'))
+                        print("sn: ", end='')
+                        for byte in range(0,12,4):
+                                x = self.__getSN(byte)
+                                x = x[::-1]  # reverse the bytes
+                                self.sn  = self.sn + x
+                                print(binascii.hexlify(x).decode('Latin-1'), end='') # show user
+                        print('')
+                        print("chip: %08x" % self.__getCHIP())
+                except Exception:
+                        # ignore bad character encodings
+                        pass
+            else:
+                print("Bootloader too old to provide OTP data")
+
+
         # upload the firmware
         def upload(self, fw):
                 # Make sure we are doing the right thing
@@ -440,37 +476,8 @@ class uploader(object):
                 if self.fw_maxsize < fw.property('image_size'):
                         raise RuntimeError("Firmware image is too large for this board")
 
-                # OTP added in v4:
-                if self.bl_rev > 3:
-                    for byte in range(0,32*6,4):
-                        x = self.__getOTP(byte)
-                        self.otp  = self.otp + x
-                        print(binascii.hexlify(x).decode('Latin-1') + ' ', end='')
-                    # see src/modules/systemlib/otp.h in px4 code:
-                    self.otp_id = self.otp[0:4]
-                    self.otp_idtype = self.otp[4:5]
-                    self.otp_vid = self.otp[8:4:-1]
-                    self.otp_pid = self.otp[12:8:-1]
-                    self.otp_coa = self.otp[32:160]
-                    # show user:
-                    try:
-                            print("type: " + self.otp_id.decode('Latin-1'))
-                            print("idtype: " + binascii.b2a_qp(self.otp_idtype).decode('Latin-1'))
-                            print("vid: " + binascii.hexlify(self.otp_vid).decode('Latin-1'))
-                            print("pid: "+ binascii.hexlify(self.otp_pid).decode('Latin-1'))
-                            print("coa: "+ binascii.b2a_base64(self.otp_coa).decode('Latin-1'))
-                            print("sn: ", end='')
-                            for byte in range(0,12,4):
-                                    x = self.__getSN(byte)
-                                    x = x[::-1]  # reverse the bytes
-                                    self.sn  = self.sn + x
-                                    print(binascii.hexlify(x).decode('Latin-1'), end='') # show user
-                            print('')
-                            print("chip: %08x" % self.__getCHIP())
-                    except Exception:
-                            # ignore bad character encodings
-                            pass
-                
+                self.otp_read()
+
                 self.__erase("Erase  ")
                 self.__program("Program", fw)
 
@@ -485,7 +492,7 @@ class uploader(object):
                 print("\nRebooting.\n")
                 self.__reboot()
                 self.port.close()
-                
+
         def send_reboot(self):
                 try:
                     # try reboot via NSH first
@@ -512,6 +519,7 @@ parser.add_argument('--port', action="store", required=True, help="Serial port(s
 parser.add_argument('--baud', action="store", type=int, default=115200, help="Baud rate of the serial port (default is 115200), only required for true serial ports.")
 parser.add_argument('--force', action='store_true', default=False, help='Override board type check and continue loading')
 parser.add_argument('--boot-delay', type=int, default=None, help='minimum boot delay to store in flash')
+parser.add_argument('--readonly', action='store_true', default=False, help='Just display information from the bootloader')
 parser.add_argument('firmware', action="store", help="Firmware file to be uploaded")
 args = parser.parse_args()
 
@@ -521,10 +529,11 @@ if os.path.exists("/usr/sbin/ModemManager"):
         print("WARNING: You should uninstall ModemManager as it conflicts with any non-modem serial device (like Pixhawk)")
         print("==========================================================================================================")
 
-# Load the firmware file
-fw = firmware(args.firmware)
-print("Loaded firmware for %x,%x, size: %d bytes, waiting for the bootloader..." % (fw.property('board_id'), fw.property('board_revision'), fw.property('image_size')))
-print("If the board does not respond within 1-2 seconds, unplug and re-plug the USB connector.")
+if not args.readonly:
+    # Load the firmware file
+    fw = firmware(args.firmware)
+    print("Loaded firmware for %x,%x, size: %d bytes, waiting for the bootloader..." % (fw.property('board_id'), fw.property('board_revision'), fw.property('image_size')))
+    print("If the board does not respond within 1-2 seconds, unplug and re-plug the USB connector.")
 
 # Spin waiting for a device to show up
 while True:
@@ -577,7 +586,7 @@ while True:
                         print("if the board does not respond, unplug and re-plug the USB connector.")
                         up.send_reboot()
 
-                        # wait for the reboot, without we might run into Serial I/O Error 5 
+                        # wait for the reboot, without we might run into Serial I/O Error 5
                         time.sleep(0.5)
 
                         # always close the port
@@ -585,8 +594,11 @@ while True:
                         continue
 
                 try:
-                        # ok, we have a bootloader, try flashing it
-                        up.upload(fw)
+                        # ok, we have a bootloader, talk to it
+                        if args.readonly:
+                            up.otp_read()
+                        else:
+                            up.upload(fw)
 
                 except RuntimeError as ex:
 
