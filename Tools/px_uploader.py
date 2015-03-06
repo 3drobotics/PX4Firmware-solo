@@ -443,7 +443,7 @@ class uploader(object):
                 self.otp_coa = self.otp[32:160]
                 # show user:
                 try:
-                        print("type: " + self.otp_id.decode('Latin-1'))
+                        print("\ntype: " + self.otp_id.decode('Latin-1'))
                         print("idtype: " + binascii.b2a_qp(self.otp_idtype).decode('Latin-1'))
                         print("vid: " + binascii.hexlify(self.otp_vid).decode('Latin-1'))
                         print("pid: "+ binascii.hexlify(self.otp_pid).decode('Latin-1'))
