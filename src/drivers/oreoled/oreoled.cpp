@@ -633,7 +633,7 @@ oreoled_main(int argc, char *argv[])
 		uint8_t macro = (uint8_t)strtol(argv[2], NULL, 0);
 
 		/* sanity check macro number */
-		if (macro > OREOLED_PARAM_MACRO_ENUM_COUNT) {
+		if (macro >= OREOLED_PARAM_MACRO_ENUM_COUNT) {
 			errx(1, "invalid macro number %d", (int)macro);
 			exit(ret);
 		}
@@ -665,8 +665,8 @@ oreoled_main(int argc, char *argv[])
 		oreoled_cmd_t sendb;
 
 		/* maximum of 20 bytes can be sent */
-		if (argc > 20 + 3) {
-			errx(1, "Max of 20 bytes can be sent");
+		if (argc > CONFIG_NSH_MAXARGUMENTS) {
+			errx(1, "Max of %d bytes can be sent", CONFIG_NSH_MAXARGUMENTS);
 		}
 
 		/* check led num */

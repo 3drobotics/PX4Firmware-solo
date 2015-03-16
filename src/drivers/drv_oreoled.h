@@ -68,7 +68,7 @@
 #define OREOLED_ALL_INSTANCES	0xff
 
 /* maximum command length that can be sent to LEDs */
-#define OREOLED_CMD_LENGTH_MAX	24
+#define OREOLED_CMD_LENGTH_MAX	40
 
 /* enum passed to OREOLED_SET_MODE ioctl()
  *	defined by hardware */
