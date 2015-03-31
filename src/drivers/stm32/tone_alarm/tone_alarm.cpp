@@ -678,12 +678,9 @@ tune_error:
 	// stop (and potentially restart) the tune
 tune_end:
 	stop_note();
-	if (_repeat) {
-		start_tune(_tune);
-	} else {
-		_tune = nullptr;
-		_default_tune_number = 0;
-	}
+
+	// Restart the error tones & play forever
+	start_tune(_tune);
 	return;
 }
 
@@ -806,13 +803,8 @@ ToneAlarm::write(file *filp, const char *buffer, size_t len)
 	if (buffer[0] == '\0')
 		return OK;
 
-	// allocate a copy of the new tune
-	_user_tune = strndup(buffer, len);
-	if (_user_tune == nullptr)
-		return -ENOMEM;
-
-	// and play it
-	start_tune(_user_tune);
+	// Play only a hardcoded error buzzer -- never the user requested tone
+	start_tune("ML<<CP4CP4CP4CP4CP4");
 
 	return len;
 }
