@@ -266,7 +266,7 @@ OREOLED::info()
 	}
 
 	/* display perf info */
-	perf_print_counter(_call_perf);
+    perf_print_counter(_call_perf);
 	perf_print_counter(_gcall_perf);
 	perf_print_counter(_probe_perf);
 	perf_print_counter(_comms_errors);
@@ -540,6 +540,7 @@ OREOLED::cycle()
 	/* schedule a fresh cycle call when the command is sent */
 	work_queue(HPWORK, &_work, (worker_t)&OREOLED::cycle_trampoline, this,
 		   USEC2TICK(OREOLED_UPDATE_INTERVAL_US));
+
 }
 
 int
