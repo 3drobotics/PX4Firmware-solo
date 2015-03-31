@@ -368,6 +368,45 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 
 		return ret;
 
+	case OREOLED_SEND_RESET:
+		warnx("sending a reset...");
+		/* send a reset */
+		new_cmd.led_num = OREOLED_ALL_INSTANCES;
+		new_cmd.buff[0] = OREOLED_PATTERN_PARAMUPDATE;
+		new_cmd.buff[1] = OREOLED_PARAM_RESET;
+		new_cmd.buff[2] = OEROLED_RESET_NONCE;
+		new_cmd.num_bytes = 3;
+
+		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+			/* add command to queue for all healthy leds */
+			if (_healthy[i]) {
+				warnx("sending a reset... to %i", i);
+				new_cmd.led_num = i;
+				_cmd_queue->force(&new_cmd);
+				ret = OK;
+			}
+		}
+
+		return ret;
+
+	case OREOLED_BL_BOOT_APP:
+		/* send a reset */
+		//new_cmd.led_num = OREOLED_ALL_INSTANCES;
+		new_cmd.buff[0] = 0x01;
+		new_cmd.buff[1] = 0x80;
+		new_cmd.num_bytes = 2;
+
+		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+			/* add command to queue for all healthy leds */
+			if (_healthy[i]) {
+				new_cmd.led_num = i;
+				_cmd_queue->force(&new_cmd);
+				ret = OK;
+			}
+		}
+
+		return ret;
+
 	case OREOLED_SEND_BYTES:
 		/* send bytes */
 		new_cmd = *((oreoled_cmd_t *) arg);
@@ -447,7 +486,7 @@ OREOLED::send_cmd(oreoled_cmd_t new_cmd)
 void
 oreoled_usage()
 {
-	warnx("missing command: try 'start', 'test', 'info', 'off', 'stop', 'rgb 30 40 50' 'macro 4' 'gencall' 'bytes <lednum> 7 9 6'");
+	warnx("missing command: try 'start', 'test', 'info', 'off', 'stop', 'reset', 'rgb 30 40 50', 'macro 4', 'gencall', 'bytes <lednum> 7 9 6'");
 	warnx("options:");
 	warnx("    -b i2cbus (%d)", PX4_I2C_BUS_LED);
 	warnx("    -a addr (0x%x)", OREOLED_BASE_I2C_ADDR);
@@ -641,6 +680,46 @@ oreoled_main(int argc, char *argv[])
 		oreoled_macrorun_t macro_run = {OREOLED_ALL_INSTANCES, (enum oreoled_macro)macro};
 
 		if ((ret = ioctl(fd, OREOLED_RUN_MACRO, (unsigned long)&macro_run)) != OK) {
+			errx(1, "failed to run macro");
+		}
+
+		close(fd);
+		exit(ret);
+	}
+
+	/* send reset request to all LEDS */
+	if (!strcmp(verb, "reset")) {
+		if (argc < 2) {
+			errx(1, "Usage: oreoled reset");
+		}
+
+		int fd = open(OREOLED0_DEVICE_PATH, 0);
+
+		if (fd == -1) {
+			errx(1, "Unable to open " OREOLED0_DEVICE_PATH);
+		}
+
+		if ((ret = ioctl(fd, OREOLED_SEND_RESET, 0)) != OK) {
+			errx(1, "failed to run macro");
+		}
+
+		close(fd);
+		exit(ret);
+	}
+
+	/* send reset request to all LEDS */
+	if (!strcmp(verb, "boot")) {
+		if (argc < 2) {
+			errx(1, "Usage: oreoled boot");
+		}
+
+		int fd = open(OREOLED0_DEVICE_PATH, 0);
+
+		if (fd == -1) {
+			errx(1, "Unable to open " OREOLED0_DEVICE_PATH);
+		}
+
+		if ((ret = ioctl(fd, OREOLED_BL_BOOT_APP, 0)) != OK) {
 			errx(1, "failed to run macro");
 		}
 
