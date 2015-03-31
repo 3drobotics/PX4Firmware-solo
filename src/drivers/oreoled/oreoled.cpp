@@ -293,7 +293,7 @@ OREOLED::cycle()
 				set_address(OREOLED_BASE_I2C_ADDR + i);
 
 				/* send I2C command and record health*/
-                                uint8_t reply[2];
+                uint8_t reply[2];
 				if (transfer(msg, sizeof(msg), reply, 2) == OK) {
 					_healthy[i] = true;
 					_num_healthy++;
@@ -325,14 +325,24 @@ OREOLED::cycle()
 
 			/* set I2C address */
 			set_address(OREOLED_BASE_I2C_ADDR + next_cmd.led_num);
-			/* send I2C command */
 
-            uint8_t reply[2];
-			if (transfer(next_cmd.buff, next_cmd.num_bytes, reply, 2) != OK) {
+			/* Calculate XOR CRC and append to the i2c write data */
+			uint8_t i;
+			uint32_t next_cmd_xor = 0;
+			for(i = 0; i < next_cmd.num_bytes; i++) {
+				next_cmd_xor ^= next_cmd.buff[i];
+			}
+			/*log("sending %d bytes a", next_cmd.num_bytes);
+			next_cmd.buff[++next_cmd.num_bytes] = next_cmd_xor;
+			log("sending %d bytes b", next_cmd.num_bytes);*/
+
+			/* send I2C command */
+            uint8_t reply[3]; // First byte is ignored
+			if (transfer(next_cmd.buff, next_cmd.num_bytes, reply, 3) != OK) {
 			    perf_count(_comms_errors);
-			} else if (reply[0] != OREOLED_BASE_I2C_ADDR + next_cmd.led_num ||
-				   reply[1] != next_cmd.buff[0]) {
-			    perf_count(_reply_errors);				
+			} else if (reply[1] != OREOLED_BASE_I2C_ADDR + next_cmd.led_num ||
+				   reply[2] != next_cmd_xor) {
+			    perf_count(_reply_errors);
 			}
 
 			perf_end(_call_perf);
