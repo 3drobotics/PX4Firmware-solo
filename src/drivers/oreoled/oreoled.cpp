@@ -540,6 +540,7 @@ OREOLED::cycle()
 	/* schedule a fresh cycle call when the command is sent */
 	work_queue(HPWORK, &_work, (worker_t)&OREOLED::cycle_trampoline, this,
 		   USEC2TICK(OREOLED_UPDATE_INTERVAL_US));
+
 }
 
 int
