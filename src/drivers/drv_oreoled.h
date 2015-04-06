@@ -61,12 +61,6 @@
 /** send bytes */
 #define OREOLED_SEND_BYTES		_OREOLEDIOC(3)
 
-/** send reset */
-#define OREOLED_SEND_RESET		_OREOLEDIOC(4)
-
-/** boot application */
-#define OREOLED_BL_BOOT_APP		_OREOLEDIOC(5)
-
 /* Oreo LED driver supports up to 4 leds */
 #define OREOLED_NUM_LEDS		4
 
@@ -76,8 +70,11 @@
 /* maximum command length that can be sent to LEDs */
 #define OREOLED_CMD_LENGTH_MAX	24
 
-/* magic number used to verify the software reset is valid */
-#define OEROLED_RESET_NONCE		42
+/* maximum command length that can be read from LEDs */
+#define OREOLED_CMD_READ_LENGTH_MAX	10
+
+/* maximum number of commands retries */
+#define OEROLED_COMMAND_RETRIES	10
 
 /* enum passed to OREOLED_SET_MODE ioctl()
  *	defined by hardware */

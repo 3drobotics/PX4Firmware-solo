@@ -70,7 +70,7 @@
 #define OREOLED_NUM_LEDS		4			///< maximum number of LEDs the oreo led driver can support
 #define OREOLED_BASE_I2C_ADDR	0x68		///< base i2c address (7-bit)
 #define OPEOLED_I2C_RETRYCOUNT  2           ///< i2c retry count
-#define OREOLED_TIMEOUT_USEC		10000000U	///< timeout looking for battery 10seconds after startup
+#define OREOLED_TIMEOUT_USEC		10000000U	///< timeout looking for oreoleds 10seconds after startup
 #define OREOLED_GENERALCALL_US	4000000U	///< general call sent every 4 seconds
 #define OREOLED_GENERALCALL_CMD	0x00		///< general call command sent at regular intervals
 
@@ -273,16 +273,14 @@ OREOLED::cycle()
 	uint64_t now = hrt_absolute_time();
 	bool startup_timeout = (now - _start_time > OREOLED_TIMEOUT_USEC);
 
-	/* if not leds found during start-up period, exit without rescheduling */
-	if (startup_timeout && _num_healthy == 0) {
-		warnx("did not find oreoled");
-		return;
-	}
+	/* prepare the response buffer */
+	uint8_t reply[OREOLED_CMD_READ_LENGTH_MAX];
 
 	/* during startup period keep searching for unhealthy LEDs */
 	if (!startup_timeout && _num_healthy < OREOLED_NUM_LEDS) {
-		/* prepare command to turn off LED*/
-		uint8_t msg[] = {OREOLED_PATTERN_OFF};
+		/* prepare command to turn off LED */
+		/* add two bytes of pre-amble to for higher signal to noise ratio */
+		uint8_t msg[] = {0xAA, 0x55, OREOLED_PATTERN_OFF, 0x00};
 
 		/* attempt to contact each unhealthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
@@ -292,16 +290,24 @@ OREOLED::cycle()
 				/* set I2C address */
 				set_address(OREOLED_BASE_I2C_ADDR + i);
 
-				/* send I2C command and record health*/
-                uint8_t reply[2];
-				if (transfer(msg, sizeof(msg), reply, 2) == OK) {
-					_healthy[i] = true;
-					_num_healthy++;
-					log("oreoled %u ok", (unsigned)i);
-					if (reply[0] != OREOLED_BASE_I2C_ADDR + i ||
-					    reply[1] != msg[0]) {
+				/* Calculate XOR CRC and append to the i2c write data */
+				msg[sizeof(msg)-1] = OREOLED_BASE_I2C_ADDR + i;
+				for(uint8_t j = 0; j < sizeof(msg)-1; j++) {
+					msg[sizeof(msg)-1] ^= msg[j];
+				}
+
+				/* send I2C command */
+				if (transfer(msg, sizeof(msg), reply, 3) == OK) {
+					if (reply[1] == OREOLED_BASE_I2C_ADDR + i &&
+						reply[2] == msg[sizeof(msg)-1]) {
+						log("oreoled %u ok", (unsigned)i);
+						_healthy[i] = true;
+						_num_healthy++;
+					} else {
 						perf_count(_reply_errors);
 					}
+				} else {
+					perf_count(_comms_errors);
 				}
 				perf_end(_probe_perf);
 			}
@@ -327,22 +333,25 @@ OREOLED::cycle()
 			set_address(OREOLED_BASE_I2C_ADDR + next_cmd.led_num);
 
 			/* Calculate XOR CRC and append to the i2c write data */
-			uint8_t i;
-			uint32_t next_cmd_xor = 0;
-			for(i = 0; i < next_cmd.num_bytes; i++) {
+			uint8_t next_cmd_xor = OREOLED_BASE_I2C_ADDR + next_cmd.led_num;
+			for(uint8_t i = 0; i < next_cmd.num_bytes; i++) {
 				next_cmd_xor ^= next_cmd.buff[i];
 			}
-			/*log("sending %d bytes a", next_cmd.num_bytes);
-			next_cmd.buff[++next_cmd.num_bytes] = next_cmd_xor;
-			log("sending %d bytes b", next_cmd.num_bytes);*/
+			next_cmd.buff[next_cmd.num_bytes++] = next_cmd_xor;
 
-			/* send I2C command */
-            uint8_t reply[3]; // First byte is ignored
-			if (transfer(next_cmd.buff, next_cmd.num_bytes, reply, 3) != OK) {
-			    perf_count(_comms_errors);
-			} else if (reply[1] != OREOLED_BASE_I2C_ADDR + next_cmd.led_num ||
-				   reply[2] != next_cmd_xor) {
-			    perf_count(_reply_errors);
+			/* send I2C command with a retry limit */
+			for(uint8_t retry = OEROLED_COMMAND_RETRIES; retry > 0; retry--) {
+				if (transfer(next_cmd.buff, next_cmd.num_bytes, reply, 3) == OK) {
+					if (reply[1] == (OREOLED_BASE_I2C_ADDR + next_cmd.led_num) &&
+						reply[2] == next_cmd_xor) {
+						/* slave returned a valid response */
+						break;
+					} else {
+						perf_count(_reply_errors);
+					}
+				} else {
+					perf_count(_comms_errors);
+				}
 			}
 
 			perf_end(_call_perf);
@@ -367,6 +376,7 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 {
 	int ret = -ENODEV;
 	oreoled_cmd_t new_cmd;
+	uint8_t reply[OREOLED_CMD_READ_LENGTH_MAX];
 
 	switch (cmd) {
 	case OREOLED_SET_RGB:
@@ -424,45 +434,6 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 		} else if (new_cmd.led_num < OREOLED_NUM_LEDS) {
 			/* request to set individual instance's rgb value */
 			if (_healthy[new_cmd.led_num]) {
-				_cmd_queue->force(&new_cmd);
-				ret = OK;
-			}
-		}
-
-		return ret;
-
-	case OREOLED_SEND_RESET:
-		warnx("sending a reset...");
-		/* send a reset */
-		new_cmd.led_num = OREOLED_ALL_INSTANCES;
-		new_cmd.buff[0] = OREOLED_PATTERN_PARAMUPDATE;
-		new_cmd.buff[1] = OREOLED_PARAM_RESET;
-		new_cmd.buff[2] = OEROLED_RESET_NONCE;
-		new_cmd.num_bytes = 3;
-
-		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			/* add command to queue for all healthy leds */
-			if (_healthy[i]) {
-				warnx("sending a reset... to %i", i);
-				new_cmd.led_num = i;
-				_cmd_queue->force(&new_cmd);
-				ret = OK;
-			}
-		}
-
-		return ret;
-
-	case OREOLED_BL_BOOT_APP:
-		/* send a reset */
-		//new_cmd.led_num = OREOLED_ALL_INSTANCES;
-		new_cmd.buff[0] = 0x01;
-		new_cmd.buff[1] = 0x80;
-		new_cmd.num_bytes = 2;
-
-		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			/* add command to queue for all healthy leds */
-			if (_healthy[i]) {
-				new_cmd.led_num = i;
 				_cmd_queue->force(&new_cmd);
 				ret = OK;
 			}
@@ -549,7 +520,7 @@ OREOLED::send_cmd(oreoled_cmd_t new_cmd)
 void
 oreoled_usage()
 {
-	warnx("missing command: try 'start', 'test', 'info', 'off', 'stop', 'reset', 'rgb 30 40 50', 'macro 4', 'gencall', 'bytes <lednum> 7 9 6'");
+	warnx("missing command: try 'start', 'test', 'info', 'off', 'stop', 'rgb 30 40 50', 'macro 4', 'gencall', 'bytes <lednum> 7 9 6'");
 	warnx("options:");
 	warnx("    -b i2cbus (%d)", PX4_I2C_BUS_LED);
 	warnx("    -a addr (0x%x)", OREOLED_BASE_I2C_ADDR);
@@ -743,46 +714,6 @@ oreoled_main(int argc, char *argv[])
 		oreoled_macrorun_t macro_run = {OREOLED_ALL_INSTANCES, (enum oreoled_macro)macro};
 
 		if ((ret = ioctl(fd, OREOLED_RUN_MACRO, (unsigned long)&macro_run)) != OK) {
-			errx(1, "failed to run macro");
-		}
-
-		close(fd);
-		exit(ret);
-	}
-
-	/* send reset request to all LEDS */
-	if (!strcmp(verb, "reset")) {
-		if (argc < 2) {
-			errx(1, "Usage: oreoled reset");
-		}
-
-		int fd = open(OREOLED0_DEVICE_PATH, 0);
-
-		if (fd == -1) {
-			errx(1, "Unable to open " OREOLED0_DEVICE_PATH);
-		}
-
-		if ((ret = ioctl(fd, OREOLED_SEND_RESET, 0)) != OK) {
-			errx(1, "failed to run macro");
-		}
-
-		close(fd);
-		exit(ret);
-	}
-
-	/* send reset request to all LEDS */
-	if (!strcmp(verb, "boot")) {
-		if (argc < 2) {
-			errx(1, "Usage: oreoled boot");
-		}
-
-		int fd = open(OREOLED0_DEVICE_PATH, 0);
-
-		if (fd == -1) {
-			errx(1, "Unable to open " OREOLED0_DEVICE_PATH);
-		}
-
-		if ((ret = ioctl(fd, OREOLED_BL_BOOT_APP, 0)) != OK) {
 			errx(1, "failed to run macro");
 		}
 
