@@ -71,7 +71,7 @@
 #define OREOLED_NUM_LEDS		4			///< maximum number of LEDs the oreo led driver can support
 #define OREOLED_BASE_I2C_ADDR	0x68		///< base i2c address (7-bit)
 #define OPEOLED_I2C_RETRYCOUNT  2           ///< i2c retry count
-#define OREOLED_TIMEOUT_USEC		4000000U	///< timeout looking for oreoleds 4seconds after startup
+#define OREOLED_TIMEOUT_USEC	2000000U	///< timeout looking for oreoleds 2 seconds after startup
 #define OREOLED_GENERALCALL_US	4000000U	///< general call sent every 4 seconds
 #define OREOLED_GENERALCALL_CMD	0x00		///< general call command sent at regular intervals
 
@@ -96,6 +96,9 @@ public:
 
 	/* send cmd to an LEDs (used for testing only) */
 	int				send_cmd(oreoled_cmd_t sb);
+
+	/* returns true once the driver finished bootloading and ready for commands */
+	bool			is_ready();
 
 private:
 
@@ -140,6 +143,7 @@ private:
 	bool			_autoupdate;					///< true if the driver should update all LEDs
 	bool			_alwaysupdate;					///< true if the driver should update all LEDs
 	bool			_is_bootloading;				///< true if a bootloading operation is in progress
+	bool			_is_ready;						///< set to true once the driver has completly initialised
 
 	/* performance checking */
 	perf_counter_t      _call_perf;
@@ -170,6 +174,7 @@ OREOLED::OREOLED(int bus, int i2c_addr, bool autoupdate, bool alwaysupdate) :
 	_autoupdate(autoupdate),
 	_alwaysupdate(alwaysupdate),
 	_is_bootloading(false),
+	_is_ready(false),
 	_call_perf(perf_alloc(PC_ELAPSED, "oreoled_call")),
 	_gcall_perf(perf_alloc(PC_ELAPSED, "oreoled_gcall")),
 	_probe_perf(perf_alloc(PC_ELAPSED, "oreoled_probe")),
@@ -347,7 +352,7 @@ OREOLED::cycle()
 			   USEC2TICK(OREOLED_STARTUP_INTERVAL_US));
 		return;
 	} else if(_alwaysupdate) {
-		/* attempt to update each healthy LED */
+		/* reset each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
 				_is_bootloading = true;
@@ -356,10 +361,30 @@ OREOLED::cycle()
 				/* (this happens during a pixhawk OTA update, since the LEDs stay powered) */
 				if(!_in_boot[i])
 					bootloader_app_reset(i);
+				
+				_is_bootloading = false;
+			}
+		}
+
+		/* attempt to update each healthy LED */
+		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+			if (_healthy[i]) {
+				_is_bootloading = true;
 
 				/* if the flashing was successful, boot the new app */
-				if(bootloader_flash(i))
-					bootloader_boot(i);
+				bootloader_flash(i);
+				
+				_is_bootloading = false;
+			}
+		}
+
+		/* boot each healthy LED */
+		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+			if (_healthy[i]) {
+				_is_bootloading = true;
+
+				/* boot the application */
+				bootloader_boot(i);
 				
 				_is_bootloading = false;
 			}
@@ -373,7 +398,7 @@ OREOLED::cycle()
 			   USEC2TICK(OREOLED_UPDATE_INTERVAL_US));
 		return;
 	} else if(_autoupdate) {
-		/* attempt to update each healthy LED */
+		/* reset each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
 				_is_bootloading = true;
@@ -382,16 +407,33 @@ OREOLED::cycle()
 				/* (this happens during a pixhawk OTA update, since the LEDs stay powered) */
 				if(!_in_boot[i])
 					bootloader_app_reset(i);
+				
+				_is_bootloading = false;
+			}
+		}
+
+		/* attempt to update each healthy LED */
+		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+			if (_healthy[i]) {
+				_is_bootloading = true;
 
 				/* only flash LEDs with an old version of the applictioon */
 				if(bootloader_app_version(i) != OREOLED_FW_VERSION) {
 					/* if the flashing was successful, boot the new app */
-					if(bootloader_flash(i))
-						bootloader_boot(i);
-				} else {
-					/* boot the application since we aren't flashing it */
-					bootloader_boot(i);
+					bootloader_flash(i);
 				}
+				
+				_is_bootloading = false;
+			}
+		}
+
+		/* boot each healthy LED */
+		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+			if (_healthy[i]) {
+				_is_bootloading = true;
+
+				/* boot the application */
+				bootloader_boot(i);
 				
 				_is_bootloading = false;
 			}
@@ -418,6 +460,9 @@ OREOLED::cycle()
 		work_queue(HPWORK, &_work, (worker_t)&OREOLED::cycle_trampoline, this,
 			   USEC2TICK(OREOLED_UPDATE_INTERVAL_US));
 		return;
+	} else if(!_is_ready) {
+		/* indicate a ready state since startup has finished */
+		_is_ready = true;
 	}
 
 	/* get next command from queue */
@@ -1295,6 +1340,13 @@ OREOLED::send_cmd(oreoled_cmd_t new_cmd)
 	return ret;
 }
 
+/* return the internal _is_ready flag indicating if initialisation is complete */
+bool
+OREOLED::is_ready()
+{
+	return _is_ready;
+}
+
 void
 oreoled_usage()
 {
@@ -1377,6 +1429,13 @@ oreoled_main(int argc, char *argv[])
 			delete g_oreoled;
 			g_oreoled = nullptr;
 			errx(1, "failed to start driver");
+		}
+
+		/* wait for up to 20 seconds for the driver become ready */
+		for(uint8_t i = 0; i < 20; i++) {
+			if(g_oreoled->is_ready())
+				break;
+			sleep(1);
 		}
 
 		exit(0);
