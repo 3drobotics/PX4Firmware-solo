@@ -130,6 +130,7 @@ private:
 	int				bootloader_set_colour(int led_num, uint8_t red, uint8_t green);
 	int				bootloader_flash(int led_num);
 	int				bootloader_boot(int led_num);
+	uint16_t		bootloader_fw_checksum(void);
 
 	/* internal variables */
 	work_s			_work;							///< work queue for scheduling reads
@@ -144,6 +145,7 @@ private:
 	bool			_alwaysupdate;					///< true if the driver should update all LEDs
 	bool			_is_bootloading;				///< true if a bootloading operation is in progress
 	bool			_is_ready;						///< set to true once the driver has completly initialised
+	uint16_t		_fw_checksum;					///< the current 16bit XOR checksum of the built in oreoled firmware binary
 
 	/* performance checking */
 	perf_counter_t      _call_perf;
@@ -175,6 +177,7 @@ OREOLED::OREOLED(int bus, int i2c_addr, bool autoupdate, bool alwaysupdate) :
 	_alwaysupdate(alwaysupdate),
 	_is_bootloading(false),
 	_is_ready(false),
+	_fw_checksum(0x0000),
 	_call_perf(perf_alloc(PC_ELAPSED, "oreoled_call")),
 	_gcall_perf(perf_alloc(PC_ELAPSED, "oreoled_gcall")),
 	_probe_perf(perf_alloc(PC_ELAPSED, "oreoled_probe")),
@@ -355,38 +358,26 @@ OREOLED::cycle()
 		/* reset each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
-				_is_bootloading = true;
-
 				/* reset the LED if it's not in the bootloader */
 				/* (this happens during a pixhawk OTA update, since the LEDs stay powered) */
 				if(!_in_boot[i])
 					bootloader_app_reset(i);
-				
-				_is_bootloading = false;
 			}
 		}
 
 		/* attempt to update each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
-				_is_bootloading = true;
-
-				/* if the flashing was successful, boot the new app */
+				/* flash the new firmware */
 				bootloader_flash(i);
-				
-				_is_bootloading = false;
 			}
 		}
 
 		/* boot each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
-				_is_bootloading = true;
-
 				/* boot the application */
 				bootloader_boot(i);
-				
-				_is_bootloading = false;
 			}
 		}
 
@@ -401,41 +392,29 @@ OREOLED::cycle()
 		/* reset each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
-				_is_bootloading = true;
-
 				/* reset the LED if it's not in the bootloader */
 				/* (this happens during a pixhawk OTA update, since the LEDs stay powered) */
 				if(!_in_boot[i])
 					bootloader_app_reset(i);
-				
-				_is_bootloading = false;
 			}
 		}
 
 		/* attempt to update each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
-				_is_bootloading = true;
-
 				/* only flash LEDs with an old version of the applictioon */
-				if(bootloader_app_version(i) != OREOLED_FW_VERSION) {
-					/* if the flashing was successful, boot the new app */
+				if(bootloader_app_checksum(i) != bootloader_fw_checksum()) {
+					/* flash the new firmware */
 					bootloader_flash(i);
 				}
-				
-				_is_bootloading = false;
 			}
 		}
 
 		/* boot each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
-				_is_bootloading = true;
-
 				/* boot the application */
 				bootloader_boot(i);
-				
-				_is_bootloading = false;
 			}
 		}
 
@@ -1080,6 +1059,56 @@ OREOLED::bootloader_boot(int led_num)
 
 	_is_bootloading = false;
 	return ret;
+}
+
+uint16_t
+OREOLED::bootloader_fw_checksum(void)
+{
+	/* Calculate the 16 bit XOR checksum of the firmware on the first call of this function */
+	if(_fw_checksum == 0x0000) {
+		/* Open the bootloader file */
+		int fd = ::open(OREOLED_FW_FILE, O_RDONLY);
+
+		/* check for error opening the file */
+		if (fd < 0)
+			return -1;
+
+		struct stat s;
+
+		/* attempt to stat the file */
+		if (stat(OREOLED_FW_FILE, &s) != 0)
+			return -1;
+
+		/* sanity-check file size */
+		if (s.st_size > OREOLED_FW_FILE_SIZE_LIMIT)
+			return -1;
+
+		uint8_t *buf = new uint8_t[s.st_size];
+
+		/* check that the buffer has been allocated */
+		if (buf == NULL)
+			return -1;
+
+		/* check that the firmware can be read into the buffer */
+		if (::read(fd, buf, s.st_size) != s.st_size)
+			return -1;
+
+		::close(fd);
+
+		/* Calculate a 16 bit XOR checksum of the flash */
+		/* Skip first two bytes which are modified by the bootloader */
+		uint16_t app_checksum = 0x0000;
+		for(uint16_t j = 2; j < s.st_size; j+=2) {
+			app_checksum ^= (buf[j] << 8) | buf[j+1];
+		}
+		warnx("bl finalise length = %i", s.st_size);
+		warnx("bl finalise checksum = %i", app_checksum);
+
+		/* Store the checksum so it's only calculated once */
+		_fw_checksum = app_checksum;
+	}
+
+	return _fw_checksum;
 }
 
 int
