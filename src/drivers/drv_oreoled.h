@@ -130,7 +130,6 @@
 #define OREOLED_BOOT_CMD_BOOT_NONCE		0xA2
 
 #define OREOLED_FW_FILE_SIZE_LIMIT		6144
-#define OREOLED_FW_VERSION				0x0101
 #define OREOLED_FW_FILE					"/etc/firmware/oreoled.bin"
 
 /* enum passed to OREOLED_SET_MODE ioctl()
