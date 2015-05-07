@@ -123,6 +123,8 @@ private:
 	void			cycle();
 
 	int				bootloader_app_reset(int led_num);
+	int				bootloader_app_ping(int led_num);
+	uint16_t		bootloader_inapp_checksum(int led_num);
 	int				bootloader_ping(int led_num);
 	uint8_t			bootloader_version(int led_num);
 	uint16_t		bootloader_app_version(int led_num);
@@ -131,6 +133,7 @@ private:
 	int				bootloader_flash(int led_num);
 	int				bootloader_boot(int led_num);
 	uint16_t		bootloader_fw_checksum(void);
+	int				bootloader_coerce_healthy(void);
 
 	/* internal variables */
 	work_s			_work;							///< work queue for scheduling reads
@@ -381,6 +384,20 @@ OREOLED::cycle()
 			}
 		}
 
+		/* double check each unhealthy LED */
+		/* this re-checks "unhealthy" LEDs as they can sometimes power up with the wrong ID, */
+		/*  but will have the correct ID once they jump to the application and be healthy again */
+		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+			if (!_healthy[i] && bootloader_app_ping(i) == OK) {
+				/* mark as healthy */
+				_healthy[i] = true;
+				_num_healthy++;
+			}
+		}
+
+		/* coerce LEDs with startup issues to be healthy again */
+		bootloader_coerce_healthy();
+
 		/* mandatory updating has finished */
 		_alwaysupdate = false;
 
@@ -389,33 +406,50 @@ OREOLED::cycle()
 			   USEC2TICK(OREOLED_UPDATE_INTERVAL_US));
 		return;
 	} else if(_autoupdate) {
-		/* reset each healthy LED */
+		/* check booted oreoleds to see if the app can report it's checksum (release versions >= v1.2) */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			if (_healthy[i]) {
-				/* reset the LED if it's not in the bootloader */
-				/* (this happens during a pixhawk OTA update, since the LEDs stay powered) */
-				if(!_in_boot[i])
+			if (_healthy[i] && !_in_boot[i]) {
+				/* put any out of date oreoleds into bootloader mode */
+				/* being in bootloader mode signals to be code below that the will likey need updating */
+				if(bootloader_inapp_checksum(i) != bootloader_fw_checksum()) {
 					bootloader_app_reset(i);
-			}
-		}
-
-		/* attempt to update each healthy LED */
-		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			if (_healthy[i]) {
-				/* only flash LEDs with an old version of the applictioon */
-				if(bootloader_app_checksum(i) != bootloader_fw_checksum()) {
-					/* flash the new firmware */
-					bootloader_flash(i);
 				}
 			}
 		}
 
-		/* boot each healthy LED */
-		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			if (_healthy[i]) {
-				/* boot the application */
-				bootloader_boot(i);
+		/* reset all healthy oreoleds if the number of outdated oreoled's is > 0 */
+		/* this is done for consistency, so if only one oreoled is updating, all LEDs show the same behaviour */
+		/* otherwise a single oreoled could appear broken or failed. */
+		if(_num_inboot > 0) {
+			for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+				if (_healthy[i] && !_in_boot[i]) {
+					/* reset the LED if it's not in the bootloader */
+					/* (this happens during a pixhawk OTA update, since the LEDs stay powered) */
+					bootloader_app_reset(i);
+				}
 			}
+
+			/* update each outdated and healthy LED in bootloader mode */
+			for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+				if (_healthy[i] && _in_boot[i]) {
+					/* only flash LEDs with an old version of the applictioon */
+					if(bootloader_app_checksum(i) != bootloader_fw_checksum()) {
+						/* flash the new firmware */
+						bootloader_flash(i);
+					}
+				}
+			}
+
+			/* boot each healthy LED */
+			for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+				if (_healthy[i] && _in_boot[i]) {
+					/* boot the application */
+					bootloader_boot(i);
+				}
+			}
+
+			/* coerce LEDs with startup issues to be healthy again */
+			bootloader_coerce_healthy();
 		}
 
 		/* auto updating has finished */
@@ -426,11 +460,14 @@ OREOLED::cycle()
 			   USEC2TICK(OREOLED_UPDATE_INTERVAL_US));
 		return;
 	} else if(_num_inboot > 0) {
-		/* boot any LEDs which are in bootloader mode */
+		/* boot any LEDs which are in still in bootloader mode */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_in_boot[i])
 				bootloader_boot(i);
 		}
+
+		/* coerce LEDs with startup issues to be healthy again */
+		bootloader_coerce_healthy();
 
 		/* ensure we don't get stuck in a loop */
 		_num_inboot = 0;
@@ -539,6 +576,100 @@ OREOLED::bootloader_app_reset(int led_num)
 	usleep(OREOLED_BOOT_FLASH_WAITMS*1000*10);
 	usleep(OREOLED_BOOT_FLASH_WAITMS*1000*10);
 	usleep(OREOLED_BOOT_FLASH_WAITMS*1000*10);
+
+	_is_bootloading = false;
+	return ret;
+}
+
+int
+OREOLED::bootloader_app_ping(int led_num)
+{
+	oreoled_cmd_t boot_cmd;
+	boot_cmd.led_num = led_num;
+
+	int ret = -1;
+
+	/* Set the current address */
+	set_address(OREOLED_BASE_I2C_ADDR + boot_cmd.led_num);
+
+	/* send a pattern off command */
+	boot_cmd.buff[0] = 0xAA;
+	boot_cmd.buff[1] = 0x55;
+	boot_cmd.buff[2] = OREOLED_PATTERN_OFF;
+	boot_cmd.buff[3] = OREOLED_BASE_I2C_ADDR + boot_cmd.led_num;
+	boot_cmd.num_bytes = 4;
+	for(uint8_t j = 0; j < boot_cmd.num_bytes-1; j++) {
+		boot_cmd.buff[boot_cmd.num_bytes-1] ^= boot_cmd.buff[j];
+	}
+
+	uint8_t reply[OREOLED_CMD_READ_LENGTH_MAX];
+
+	/* send I2C command with a retry limit */
+	for(uint8_t retry = OEROLED_COMMAND_RETRIES; retry > 0; retry--) {
+		if (transfer(boot_cmd.buff, boot_cmd.num_bytes, reply, 3) == OK) {
+			if (reply[1] == (OREOLED_BASE_I2C_ADDR + boot_cmd.led_num) &&
+				reply[2] == boot_cmd.buff[boot_cmd.num_bytes-1]) {
+				/* slave returned a valid response */
+				ret = OK;
+				break;
+			}
+		}
+	}
+
+	return ret;
+}
+
+uint16_t
+OREOLED::bootloader_inapp_checksum(int led_num)
+{
+	_is_bootloading = true;
+	oreoled_cmd_t boot_cmd;
+	boot_cmd.led_num = led_num;
+
+	uint16_t ret = 0x0000;
+
+	/* Set the current address */
+	set_address(OREOLED_BASE_I2C_ADDR + boot_cmd.led_num);
+
+	boot_cmd.buff[0] = OREOLED_PATTERN_PARAMUPDATE;
+	boot_cmd.buff[1] = OREOLED_PARAM_APP_CHECKSUM;
+	boot_cmd.buff[2] = OREOLED_BASE_I2C_ADDR + boot_cmd.led_num;
+	boot_cmd.num_bytes = 3;
+	for(uint8_t j = 0; j < boot_cmd.num_bytes-1; j++) {
+		boot_cmd.buff[boot_cmd.num_bytes-1] ^= boot_cmd.buff[j];
+	}
+
+	uint8_t reply[OREOLED_CMD_READ_LENGTH_MAX];
+
+	for(uint8_t retry = OEROLED_COMMAND_RETRIES; retry > 0; retry--) {
+		/* Send the I2C Write+Read */
+		memset(reply, 0, sizeof(reply));
+		transfer(boot_cmd.buff, boot_cmd.num_bytes, reply, 6);
+
+		/* Check the response */
+		if(reply[1] == OREOLED_BASE_I2C_ADDR + boot_cmd.led_num &&
+			reply[2] == OREOLED_PARAM_APP_CHECKSUM &&
+			reply[5] == boot_cmd.buff[boot_cmd.num_bytes-1]) {
+			warnx("bl app checksum OK from LED %i", boot_cmd.led_num);
+			warnx("bl app checksum msb: 0x%x", reply[3]);
+			warnx("bl app checksum lsb: 0x%x", reply[4]);
+			ret = ((reply[3] << 8) | reply[4]);
+			break;
+		} else {
+			warnx("bl app checksum FAIL from LED %i", boot_cmd.led_num);
+			warnx("bl app checksum response  ADDR: 0x%x", reply[1]);
+			warnx("bl app checksum response   CMD: 0x%x", reply[2]);
+			warnx("bl app checksum response VER H: 0x%x", reply[3]);
+			warnx("bl app checksum response VER L: 0x%x", reply[4]);
+			warnx("bl app checksum response   XOR: 0x%x", reply[5]);
+			if(retry > 1) {
+				warnx("bl app checksum retrying LED %i", boot_cmd.led_num);
+			} else {
+				warnx("bl app checksum failed on LED %i", boot_cmd.led_num);
+				break;
+			}
+		}
+	}
 
 	_is_bootloading = false;
 	return ret;
@@ -950,8 +1081,8 @@ OREOLED::bootloader_flash(int led_num)
 
 	/* Flash writes must have succeeded so finalise the flash */
 	boot_cmd.buff[0] = OREOLED_BOOT_CMD_FINALISE_FLASH;
-	boot_cmd.buff[1] = (uint8_t)(OREOLED_FW_VERSION >> 8);
-	boot_cmd.buff[2] = (uint8_t)(OREOLED_FW_VERSION & 0xFF);
+	boot_cmd.buff[1] = *buf;		/* First two bytes of the file buffer are the version number */
+	boot_cmd.buff[2] = *buf+1;
 	boot_cmd.buff[3] = (uint8_t)(s.st_size >> 8);
 	boot_cmd.buff[4] = (uint8_t)(s.st_size & 0xFF);
 	boot_cmd.buff[5] = (uint8_t)(app_checksum >> 8);
@@ -1109,6 +1240,26 @@ OREOLED::bootloader_fw_checksum(void)
 	}
 
 	return _fw_checksum;
+}
+
+int
+OREOLED::bootloader_coerce_healthy(void)
+{
+	int ret = -1;
+
+	/* check each unhealthy LED */
+	/* this re-checks "unhealthy" LEDs as they can sometimes power up with the wrong ID, */
+	/*  but will have the correct ID once they jump to the application and be healthy again */
+	for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+		if (!_healthy[i] && bootloader_app_ping(i) == OK) {
+			/* mark as healthy */
+			_healthy[i] = true;
+			_num_healthy++;
+			ret = OK;
+		}
+	}
+
+	return ret;
 }
 
 int
