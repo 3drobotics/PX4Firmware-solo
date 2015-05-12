@@ -85,6 +85,9 @@
 /** boot application */
 #define OREOLED_BL_BOOT_APP		_OREOLEDIOC(11)
 
+/** force an i2c gencall */
+#define OREOLED_FORCE_SYNC		_OREOLEDIOC(12)
+
 /* Oreo LED driver supports up to 4 leds */
 #define OREOLED_NUM_LEDS		4
 
