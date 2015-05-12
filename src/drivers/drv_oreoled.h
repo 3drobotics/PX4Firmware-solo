@@ -129,6 +129,7 @@
 #define OREOLED_BOOT_CMD_PING_NONCE		0x2A
 #define OREOLED_BOOT_CMD_BOOT_NONCE		0xA2
 
+#define OREOLED_FW_FILE_HEADER_LENGTH	2
 #define OREOLED_FW_FILE_SIZE_LIMIT		6144
 #define OREOLED_FW_FILE					"/etc/firmware/oreoled.bin"
 

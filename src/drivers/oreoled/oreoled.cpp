@@ -384,17 +384,6 @@ OREOLED::cycle()
 			}
 		}
 
-		/* double check each unhealthy LED */
-		/* this re-checks "unhealthy" LEDs as they can sometimes power up with the wrong ID, */
-		/*  but will have the correct ID once they jump to the application and be healthy again */
-		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			if (!_healthy[i] && bootloader_app_ping(i) == OK) {
-				/* mark as healthy */
-				_healthy[i] = true;
-				_num_healthy++;
-			}
-		}
-
 		/* coerce LEDs with startup issues to be healthy again */
 		bootloader_coerce_healthy();
 
@@ -963,8 +952,10 @@ OREOLED::bootloader_flash(int led_num)
 	if (stat(OREOLED_FW_FILE, &s) != 0)
 		return -1;
 
+	uint16_t fw_length = s.st_size - OREOLED_FW_FILE_HEADER_LENGTH;
+
 	/* sanity-check file size */
-	if (s.st_size > OREOLED_FW_FILE_SIZE_LIMIT)
+	if (fw_length > OREOLED_FW_FILE_SIZE_LIMIT)
 		return -1;
 
 	uint8_t *buf = new uint8_t[s.st_size];
@@ -977,10 +968,14 @@ OREOLED::bootloader_flash(int led_num)
 	if (::read(fd, buf, s.st_size) != s.st_size)
 		return -1;
 
+	/* Grab the version bytes from the binary */
+	uint8_t version_major = buf[0];
+	uint8_t version_minor = buf[1];
+
 	::close(fd);
 
 	/* calculate flash pages (rounded up to nearest integer) */
-	uint8_t flash_pages = ((s.st_size + 64 - 1) / 64);
+	uint8_t flash_pages = ((fw_length + 64 - 1) / 64);
 
 	/* Set the current address */
 	set_address(OREOLED_BASE_I2C_ADDR + boot_cmd.led_num);
@@ -994,7 +989,7 @@ OREOLED::bootloader_flash(int led_num)
 		memset(boot_cmd.buff, 0, sizeof(boot_cmd.buff));
 		boot_cmd.buff[0] = OREOLED_BOOT_CMD_WRITE_FLASH_A;
 		boot_cmd.buff[1] = page_idx;
-		memcpy(boot_cmd.buff+2, buf+(page_idx*64), 32);
+		memcpy(boot_cmd.buff+2, buf+(page_idx*64)+OREOLED_FW_FILE_HEADER_LENGTH, 32);
 		boot_cmd.buff[32+2] = OREOLED_BASE_I2C_ADDR + boot_cmd.led_num;
 		boot_cmd.num_bytes = 32+3;
 		for(uint8_t k = 0; k < boot_cmd.num_bytes-1; k++) {
@@ -1029,7 +1024,7 @@ OREOLED::bootloader_flash(int led_num)
 		/* Send the second half of the 64 byte flash page */
 		memset(boot_cmd.buff, 0, sizeof(boot_cmd.buff));
 		boot_cmd.buff[0] = OREOLED_BOOT_CMD_WRITE_FLASH_B;
-		memcpy(boot_cmd.buff+1, buf+(page_idx*64)+32, 32);
+		memcpy(boot_cmd.buff+1, buf+(page_idx*64)+32+OREOLED_FW_FILE_HEADER_LENGTH, 32);
 		boot_cmd.buff[32+1] = OREOLED_BASE_I2C_ADDR + boot_cmd.led_num;
 		boot_cmd.num_bytes = 32+2;
 		for(uint8_t k = 0; k < boot_cmd.num_bytes-1; k++) {
@@ -1073,7 +1068,7 @@ OREOLED::bootloader_flash(int led_num)
 	/* Calculate a 16 bit XOR checksum of the flash */
 	/* Skip first two bytes which are modified by the bootloader */
 	uint16_t app_checksum = 0x0000;
-	for(uint16_t j = 2; j < s.st_size; j+=2) {
+	for(uint16_t j = 2+OREOLED_FW_FILE_HEADER_LENGTH; j < fw_length; j+=2) {
 		app_checksum ^= (buf[j] << 8) | buf[j+1];
 	}
 	warnx("bl finalise length = %i", s.st_size);
@@ -1081,8 +1076,8 @@ OREOLED::bootloader_flash(int led_num)
 
 	/* Flash writes must have succeeded so finalise the flash */
 	boot_cmd.buff[0] = OREOLED_BOOT_CMD_FINALISE_FLASH;
-	boot_cmd.buff[1] = *buf;		/* First two bytes of the file buffer are the version number */
-	boot_cmd.buff[2] = *buf+1;
+	boot_cmd.buff[1] = version_major;
+	boot_cmd.buff[2] = version_minor;
 	boot_cmd.buff[3] = (uint8_t)(s.st_size >> 8);
 	boot_cmd.buff[4] = (uint8_t)(s.st_size & 0xFF);
 	boot_cmd.buff[5] = (uint8_t)(app_checksum >> 8);
@@ -1210,8 +1205,10 @@ OREOLED::bootloader_fw_checksum(void)
 		if (stat(OREOLED_FW_FILE, &s) != 0)
 			return -1;
 
+		uint16_t fw_length = s.st_size - OREOLED_FW_FILE_HEADER_LENGTH;
+
 		/* sanity-check file size */
-		if (s.st_size > OREOLED_FW_FILE_SIZE_LIMIT)
+		if (fw_length > OREOLED_FW_FILE_SIZE_LIMIT)
 			return -1;
 
 		uint8_t *buf = new uint8_t[s.st_size];
@@ -1227,9 +1224,10 @@ OREOLED::bootloader_fw_checksum(void)
 		::close(fd);
 
 		/* Calculate a 16 bit XOR checksum of the flash */
-		/* Skip first two bytes which are modified by the bootloader */
+		/* Skip the first two bytes which are the version information, plus
+		   the next two bytes which are modified by the bootloader */
 		uint16_t app_checksum = 0x0000;
-		for(uint16_t j = 2; j < s.st_size; j+=2) {
+		for(uint16_t j = 2+OREOLED_FW_FILE_HEADER_LENGTH; j < s.st_size; j+=2) {
 			app_checksum ^= (buf[j] << 8) | buf[j+1];
 		}
 		warnx("bl finalise length = %i", s.st_size);
