@@ -1467,6 +1467,10 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 
 		return ret;
 
+	case OREOLED_FORCE_SYNC:
+		send_general_call();
+		break;
+
 	default:
 		/* see if the parent class can make any use of it */
 		ret = CDev::ioctl(filp, cmd, arg);
