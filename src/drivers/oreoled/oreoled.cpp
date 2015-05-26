@@ -35,7 +35,7 @@
 /**
  * @file oreoled.cpp
  *
- * Driver for the onboard RGB LED controller (TCA62724FMG) connected via I2C.
+ * Driver for oreoled ESCs found in solo, connected via I2C.
  *
  */
 
@@ -334,15 +334,19 @@ OREOLED::cycle()
 				if (transfer(msg, sizeof(msg), reply, 3) == OK) {
 					if (reply[1] == OREOLED_BASE_I2C_ADDR + i &&
 					    reply[2] == msg[sizeof(msg) - 1]) {
-						log("oreoled %u ok", (unsigned)i);
+						log("oreoled %u ok - in bootloader", (unsigned)i);
 						_healthy[i] = true;
 						_num_healthy++;
+						_in_boot[i] = true;
+						_num_inboot++;
 
-						/* If slaves are in application record that so we can reset if we need to bootload */
-						if (bootloader_ping(i) == OK) {
-							_in_boot[i] = true;
-							_num_inboot++;
-						}
+					} else if (reply[1] == OREOLED_BASE_I2C_ADDR + i &&
+					    reply[2] == msg[sizeof(msg) - 1]+1) {
+						log("oreoled %u ok - in application", (unsigned)i);
+						_healthy[i] = true;
+						_num_healthy++;
+						_healthy[i] = true;
+						_num_healthy++;
 
 					} else {
 						log("oreo reply errors: %u", (unsigned)_reply_errors);
@@ -1118,23 +1122,14 @@ OREOLED::bootloader_flash(int led_num)
 		}
 	}
 
-	/* Calculate a 16 bit XOR checksum of the flash */
-	/* Skip first two bytes which are modified by the bootloader */
-	uint16_t app_checksum = 0x0000;
-
-	for (uint16_t j = 2 + OREOLED_FW_FILE_HEADER_LENGTH; j < fw_length; j += 2) {
-		app_checksum ^= (buf[j] << 8) | buf[j + 1];
-	}
-
-	warnx("bl finalise length = %i", s.st_size);
-	warnx("bl finalise checksum = %i", app_checksum);
+	uint16_t app_checksum = bootloader_fw_checksum();
 
 	/* Flash writes must have succeeded so finalise the flash */
 	boot_cmd.buff[0] = OREOLED_BOOT_CMD_FINALISE_FLASH;
 	boot_cmd.buff[1] = version_major;
 	boot_cmd.buff[2] = version_minor;
-	boot_cmd.buff[3] = (uint8_t)(s.st_size >> 8);
-	boot_cmd.buff[4] = (uint8_t)(s.st_size & 0xFF);
+	boot_cmd.buff[3] = (uint8_t)(fw_length >> 8);
+	boot_cmd.buff[4] = (uint8_t)(fw_length & 0xFF);
 	boot_cmd.buff[5] = (uint8_t)(app_checksum >> 8);
 	boot_cmd.buff[6] = (uint8_t)(app_checksum & 0xFF);
 	boot_cmd.buff[7] = OREOLED_BASE_I2C_ADDR + boot_cmd.led_num;
@@ -1301,8 +1296,8 @@ OREOLED::bootloader_fw_checksum(void)
 			app_checksum ^= (buf[j] << 8) | buf[j + 1];
 		}
 
-		warnx("bl finalise length = %i", s.st_size);
-		warnx("bl finalise checksum = %i", app_checksum);
+		warnx("fw length = %i", fw_length);
+		warnx("fw checksum = %i", app_checksum);
 
 		/* Store the checksum so it's only calculated once */
 		_fw_checksum = app_checksum;
@@ -1421,8 +1416,6 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 		return ret;
 
 	case OREOLED_BL_PING:
-		_is_bootloading = true;
-
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
 				bootloader_ping(i);
@@ -1430,12 +1423,9 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
-		_is_bootloading = false;
 		return ret;
 
 	case OREOLED_BL_VER:
-		_is_bootloading = true;
-
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
 				bootloader_version(i);
@@ -1443,12 +1433,9 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
-		_is_bootloading = false;
 		return ret;
 
 	case OREOLED_BL_FLASH:
-		_is_bootloading = true;
-
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
 				bootloader_flash(i);
@@ -1456,12 +1443,9 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
-		_is_bootloading = false;
 		return ret;
 
 	case OREOLED_BL_APP_VER:
-		_is_bootloading = true;
-
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
 				bootloader_app_version(i);
@@ -1469,12 +1453,9 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
-		_is_bootloading = false;
 		return ret;
 
 	case OREOLED_BL_APP_CRC:
-		_is_bootloading = true;
-
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 			if (_healthy[i]) {
 				bootloader_app_checksum(i);
@@ -1482,11 +1463,9 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
-		_is_bootloading = false;
 		return ret;
 
 	case OREOLED_BL_SET_COLOUR:
-		_is_bootloading = true;
 		new_cmd.led_num = OREOLED_ALL_INSTANCES;
 
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
@@ -1496,11 +1475,9 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
-		_is_bootloading = false;
 		return ret;
 
 	case OREOLED_BL_BOOT_APP:
-		_is_bootloading = true;
 		new_cmd.led_num = OREOLED_ALL_INSTANCES;
 
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
@@ -1510,7 +1487,6 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 			}
 		}
 
-		_is_bootloading = false;
 		return ret;
 
 	case OREOLED_SEND_BYTES:
@@ -1655,18 +1631,14 @@ oreoled_main(int argc, char *argv[])
 			i2cdevice = PX4_I2C_BUS_LED;
 		}
 
-		/* handle autoupdate flag */
+		/* handle update flags */
 		bool autoupdate = false;
+		bool alwaysupdate = false;
 
 		if (argc > 2 && !strcmp(argv[2], "autoupdate")) {
 			warnx("autoupdate enabled");
 			autoupdate = true;
-		}
-
-		/* handle autoupdate flag */
-		bool alwaysupdate = false;
-
-		if (argc > 2 && !strcmp(argv[2], "alwaysupdate")) {
+		} else if (argc > 2 && !strcmp(argv[2], "alwaysupdate")) {
 			warnx("alwaysupdate enabled");
 			alwaysupdate = true;
 		}
@@ -1688,7 +1660,7 @@ oreoled_main(int argc, char *argv[])
 
 		/* wait for up to 20 seconds for the driver become ready */
 		for (uint8_t i = 0; i < 20; i++) {
-			if (g_oreoled->is_ready()) {
+			if (g_oreoled != nullptr && g_oreoled->is_ready()) {
 				break;
 			}
 
