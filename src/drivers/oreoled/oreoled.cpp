@@ -345,8 +345,6 @@ OREOLED::cycle()
 						log("oreoled %u ok - in application", (unsigned)i);
 						_healthy[i] = true;
 						_num_healthy++;
-						_healthy[i] = true;
-						_num_healthy++;
 
 					} else {
 						log("oreo reply errors: %u", (unsigned)_reply_errors);
