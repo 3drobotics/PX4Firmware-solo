@@ -39,7 +39,7 @@
  *       also supported by this driver.
  */
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 
 #include <sys/types.h>
 #include <stdint.h>
@@ -229,7 +229,7 @@ private:
 	struct hrt_call		_call;
 	unsigned		_call_interval;
 
-	RingBuffer		*_reports;
+	ringbuffer::RingBuffer	*_reports;
 
 	struct gyro_scale	_gyro_scale;
 	float			_gyro_range_scale;
@@ -412,7 +412,7 @@ L3GD20::L3GD20(int bus, const char* path, spi_dev_e device, enum Rotation rotati
 	_gyro_scale{},
 	_gyro_range_scale(0.0f),
 	_gyro_range_rad_s(0.0f),
-	_gyro_topic(-1),
+	_gyro_topic(nullptr),
 	_orb_class_instance(-1),
 	_class_instance(-1),
 	_current_rate(0),
@@ -474,7 +474,7 @@ L3GD20::init()
 		goto out;
 
 	/* allocate basic report buffers */
-	_reports = new RingBuffer(2, sizeof(gyro_report));
+	_reports = new ringbuffer::RingBuffer(2, sizeof(gyro_report));
 
 	if (_reports == nullptr)
 		goto out;
@@ -492,7 +492,7 @@ L3GD20::init()
 	_gyro_topic = orb_advertise_multi(ORB_ID(sensor_gyro), &grp,
 		&_orb_class_instance, (is_external()) ? ORB_PRIO_VERY_HIGH : ORB_PRIO_DEFAULT);
 
-	if (_gyro_topic < 0) {
+	if (_gyro_topic == nullptr) {
 		debug("failed to create sensor_gyro publication");
 	}
 
@@ -680,7 +680,7 @@ L3GD20::ioctl(struct file *filp, int cmd, unsigned long arg)
 	}
 
 	case GYROIOCGLOWPASS:
-		return _gyro_filter_x.get_cutoff_freq();
+		return static_cast<int>(_gyro_filter_x.get_cutoff_freq());
 
 	case GYROIOCSSCALE:
 		/* copy scale in */
@@ -1057,18 +1057,22 @@ L3GD20::measure()
 
 	report.temperature_raw = raw_report.temp;
 
-	report.x = ((report.x_raw * _gyro_range_scale) - _gyro_scale.x_offset) * _gyro_scale.x_scale;
-	report.y = ((report.y_raw * _gyro_range_scale) - _gyro_scale.y_offset) * _gyro_scale.y_scale;
-	report.z = ((report.z_raw * _gyro_range_scale) - _gyro_scale.z_offset) * _gyro_scale.z_scale;
+	float xraw_f = report.x_raw;
+	float yraw_f = report.y_raw;
+	float zraw_f = report.z_raw;
+
+	// apply user specified rotation
+	rotate_3f(_rotation, xraw_f, yraw_f, zraw_f);
+
+	report.x = ((xraw_f * _gyro_range_scale) - _gyro_scale.x_offset) * _gyro_scale.x_scale;
+	report.y = ((yraw_f * _gyro_range_scale) - _gyro_scale.y_offset) * _gyro_scale.y_scale;
+	report.z = ((zraw_f * _gyro_range_scale) - _gyro_scale.z_offset) * _gyro_scale.z_scale;
 
 	report.x = _gyro_filter_x.apply(report.x);
 	report.y = _gyro_filter_y.apply(report.y);
 	report.z = _gyro_filter_z.apply(report.z);
 
 	report.temperature = L3GD20_TEMP_OFFSET_CELSIUS - raw_report.temp;
-
-	// apply user specified rotation
-	rotate_3f(_rotation, report.x, report.y, report.z);
 
 	report.scaling = _gyro_range_scale;
 	report.range_rad_s = _gyro_range_rad_s;

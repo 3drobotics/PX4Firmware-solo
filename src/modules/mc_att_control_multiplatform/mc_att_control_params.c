@@ -52,7 +52,7 @@
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_ROLL_P);
+PX4_PARAM_DEFINE_FLOAT(MP_ROLL_P);
 
 /**
  * Roll rate P gain
@@ -62,7 +62,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_ROLL_P);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_ROLLRATE_P);
+PX4_PARAM_DEFINE_FLOAT(MP_ROLLRATE_P);
 
 /**
  * Roll rate I gain
@@ -72,7 +72,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_ROLLRATE_P);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_ROLLRATE_I);
+PX4_PARAM_DEFINE_FLOAT(MP_ROLLRATE_I);
 
 /**
  * Roll rate D gain
@@ -82,7 +82,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_ROLLRATE_I);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_ROLLRATE_D);
+PX4_PARAM_DEFINE_FLOAT(MP_ROLLRATE_D);
 
 /**
  * Pitch P gain
@@ -93,7 +93,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_ROLLRATE_D);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_PITCH_P);
+PX4_PARAM_DEFINE_FLOAT(MP_PITCH_P);
 
 /**
  * Pitch rate P gain
@@ -103,7 +103,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_PITCH_P);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_PITCHRATE_P);
+PX4_PARAM_DEFINE_FLOAT(MP_PITCHRATE_P);
 
 /**
  * Pitch rate I gain
@@ -113,7 +113,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_PITCHRATE_P);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_PITCHRATE_I);
+PX4_PARAM_DEFINE_FLOAT(MP_PITCHRATE_I);
 
 /**
  * Pitch rate D gain
@@ -123,7 +123,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_PITCHRATE_I);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_PITCHRATE_D);
+PX4_PARAM_DEFINE_FLOAT(MP_PITCHRATE_D);
 
 /**
  * Yaw P gain
@@ -134,7 +134,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_PITCHRATE_D);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_YAW_P);
+PX4_PARAM_DEFINE_FLOAT(MP_YAW_P);
 
 /**
  * Yaw rate P gain
@@ -144,7 +144,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_YAW_P);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_YAWRATE_P);
+PX4_PARAM_DEFINE_FLOAT(MP_YAWRATE_P);
 
 /**
  * Yaw rate I gain
@@ -154,7 +154,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_YAWRATE_P);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_YAWRATE_I);
+PX4_PARAM_DEFINE_FLOAT(MP_YAWRATE_I);
 
 /**
  * Yaw rate D gain
@@ -164,7 +164,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_YAWRATE_I);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_YAWRATE_D);
+PX4_PARAM_DEFINE_FLOAT(MP_YAWRATE_D);
 
 /**
  * Yaw feed forward
@@ -175,7 +175,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_YAWRATE_D);
  * @max 1.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_YAW_FF);
+PX4_PARAM_DEFINE_FLOAT(MP_YAW_FF);
 
 /**
  * Max yaw rate
@@ -187,36 +187,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_YAW_FF);
  * @max 360.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_YAWRATE_MAX);
-
-/**
- * Max manual roll
- *
- * @unit deg
- * @min 0.0
- * @max 90.0
- * @group Multicopter Attitude Control
- */
-PX4_PARAM_DEFINE_FLOAT(MC_MAN_R_MAX);
-
-/**
- * Max manual pitch
- *
- * @unit deg
- * @min 0.0
- * @max 90.0
- * @group Multicopter Attitude Control
- */
-PX4_PARAM_DEFINE_FLOAT(MC_MAN_P_MAX);
-
-/**
- * Max manual yaw rate
- *
- * @unit deg/s
- * @min 0.0
- * @group Multicopter Attitude Control
- */
-PX4_PARAM_DEFINE_FLOAT(MC_MAN_Y_MAX);
+PX4_PARAM_DEFINE_FLOAT(MP_YAWRATE_MAX);
 
 /**
  * Max acro roll rate
@@ -226,7 +197,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_MAN_Y_MAX);
  * @max 360.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_ACRO_R_MAX);
+PX4_PARAM_DEFINE_FLOAT(MP_ACRO_R_MAX);
 
 /**
  * Max acro pitch rate
@@ -236,7 +207,7 @@ PX4_PARAM_DEFINE_FLOAT(MC_ACRO_R_MAX);
  * @max 360.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_ACRO_P_MAX);
+PX4_PARAM_DEFINE_FLOAT(MP_ACRO_P_MAX);
 
 /**
  * Max acro yaw rate
@@ -245,4 +216,4 @@ PX4_PARAM_DEFINE_FLOAT(MC_ACRO_P_MAX);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PX4_PARAM_DEFINE_FLOAT(MC_ACRO_Y_MAX);
+PX4_PARAM_DEFINE_FLOAT(MP_ACRO_Y_MAX);

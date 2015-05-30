@@ -40,7 +40,7 @@
  * @author Pat Hickey
  */
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 
 #include <sys/types.h>
 #include <stdint.h>
@@ -242,7 +242,7 @@ private:
 	struct hrt_call		_call;
 	unsigned		_call_interval;
 
-	RingBuffer		*_accel_reports;
+	ringbuffer::RingBuffer	*_accel_reports;
 
 	struct accel_scale	_accel_scale;
 	float			_accel_range_scale;
@@ -251,7 +251,7 @@ private:
 	int			_accel_orb_class_instance;
 	int			_accel_class_instance;
 
-	RingBuffer		*_gyro_reports;
+	ringbuffer::RingBuffer	*_gyro_reports;
 
 	struct gyro_scale	_gyro_scale;
 	float			_gyro_range_scale;
@@ -509,7 +509,7 @@ MPU6000::MPU6000(int bus, const char *path_accel, const char *path_gyro, spi_dev
 	_accel_scale{},
 	_accel_range_scale(0.0f),
 	_accel_range_m_s2(0.0f),
-	_accel_topic(-1),
+	_accel_topic(nullptr),
 	_accel_orb_class_instance(-1),
 	_accel_class_instance(-1),
 	_gyro_reports(nullptr),
@@ -614,11 +614,11 @@ MPU6000::init()
 	}
 
 	/* allocate basic report buffers */
-	_accel_reports = new RingBuffer(2, sizeof(accel_report));
+	_accel_reports = new ringbuffer::RingBuffer(2, sizeof(accel_report));
 	if (_accel_reports == nullptr)
 		goto out;
 
-	_gyro_reports = new RingBuffer(2, sizeof(gyro_report));
+	_gyro_reports = new ringbuffer::RingBuffer(2, sizeof(gyro_report));
 	if (_gyro_reports == nullptr)
 		goto out;
 
@@ -661,7 +661,7 @@ MPU6000::init()
 	_accel_topic = orb_advertise_multi(ORB_ID(sensor_accel), &arp,
 		&_accel_orb_class_instance, (is_external()) ? ORB_PRIO_MAX : ORB_PRIO_HIGH);
 
-	if (_accel_topic < 0) {
+	if (_accel_topic == nullptr) {
 		warnx("ADVERT FAIL");
 	}
 
@@ -673,7 +673,7 @@ MPU6000::init()
 	_gyro->_gyro_topic = orb_advertise_multi(ORB_ID(sensor_gyro), &grp,
 		&_gyro->_gyro_orb_class_instance, (is_external()) ? ORB_PRIO_MAX : ORB_PRIO_HIGH);
 
-	if (_gyro->_gyro_topic < 0) {
+	if (_gyro->_gyro_topic == nullptr) {
 		warnx("ADVERT FAIL");
 	}
 
@@ -1756,16 +1756,20 @@ MPU6000::measure()
 	arb.y_raw = report.accel_y;
 	arb.z_raw = report.accel_z;
 
-	float x_in_new = ((report.accel_x * _accel_range_scale) - _accel_scale.x_offset) * _accel_scale.x_scale;
-	float y_in_new = ((report.accel_y * _accel_range_scale) - _accel_scale.y_offset) * _accel_scale.y_scale;
-	float z_in_new = ((report.accel_z * _accel_range_scale) - _accel_scale.z_offset) * _accel_scale.z_scale;
+	float xraw_f = report.accel_x;
+	float yraw_f = report.accel_y;
+	float zraw_f = report.accel_z;
+
+	// apply user specified rotation
+	rotate_3f(_rotation, xraw_f, yraw_f, zraw_f);
+
+	float x_in_new = ((xraw_f * _accel_range_scale) - _accel_scale.x_offset) * _accel_scale.x_scale;
+	float y_in_new = ((yraw_f * _accel_range_scale) - _accel_scale.y_offset) * _accel_scale.y_scale;
+	float z_in_new = ((zraw_f * _accel_range_scale) - _accel_scale.z_offset) * _accel_scale.z_scale;
 
 	arb.x = _accel_filter_x.apply(x_in_new);
 	arb.y = _accel_filter_y.apply(y_in_new);
 	arb.z = _accel_filter_z.apply(z_in_new);
-
-	// apply user specified rotation
-	rotate_3f(_rotation, arb.x, arb.y, arb.z);
 
 	arb.scaling = _accel_range_scale;
 	arb.range_m_s2 = _accel_range_m_s2;
@@ -1779,16 +1783,20 @@ MPU6000::measure()
 	grb.y_raw = report.gyro_y;
 	grb.z_raw = report.gyro_z;
 
-	float x_gyro_in_new = ((report.gyro_x * _gyro_range_scale) - _gyro_scale.x_offset) * _gyro_scale.x_scale;
-	float y_gyro_in_new = ((report.gyro_y * _gyro_range_scale) - _gyro_scale.y_offset) * _gyro_scale.y_scale;
-	float z_gyro_in_new = ((report.gyro_z * _gyro_range_scale) - _gyro_scale.z_offset) * _gyro_scale.z_scale;
+	xraw_f = report.gyro_x;
+	yraw_f = report.gyro_y;
+	zraw_f = report.gyro_z;
+
+	// apply user specified rotation
+	rotate_3f(_rotation, xraw_f, yraw_f, zraw_f);
+
+	float x_gyro_in_new = ((xraw_f * _gyro_range_scale) - _gyro_scale.x_offset) * _gyro_scale.x_scale;
+	float y_gyro_in_new = ((yraw_f * _gyro_range_scale) - _gyro_scale.y_offset) * _gyro_scale.y_scale;
+	float z_gyro_in_new = ((zraw_f * _gyro_range_scale) - _gyro_scale.z_offset) * _gyro_scale.z_scale;
 
 	grb.x = _gyro_filter_x.apply(x_gyro_in_new);
 	grb.y = _gyro_filter_y.apply(y_gyro_in_new);
 	grb.z = _gyro_filter_z.apply(z_gyro_in_new);
-
-	// apply user specified rotation
-	rotate_3f(_rotation, grb.x, grb.y, grb.z);
 
 	grb.scaling = _gyro_range_scale;
 	grb.range_rad_s = _gyro_range_rad_s;
@@ -1864,7 +1872,7 @@ MPU6000::print_registers()
 MPU6000_gyro::MPU6000_gyro(MPU6000 *parent, const char *path) :
 	CDev("MPU6000_gyro", path),
 	_parent(parent),
-	_gyro_topic(-1),
+	_gyro_topic(nullptr),
 	_gyro_orb_class_instance(-1),
 	_gyro_class_instance(-1)
 {
@@ -1930,6 +1938,7 @@ MPU6000	*g_dev_int; // on internal bus
 MPU6000	*g_dev_ext; // on external bus
 
 void	start(bool, enum Rotation);
+void	stop(bool);
 void	test(bool);
 void	reset(bool);
 void	info(bool);
@@ -1993,6 +2002,20 @@ fail:
 	}
 
 	errx(1, "driver start failed");
+}
+
+void
+stop(bool external_bus)
+{
+	MPU6000 **g_dev_ptr = external_bus?&g_dev_ext:&g_dev_int;
+	if (*g_dev_ptr != nullptr) {
+		delete *g_dev_ptr;
+		*g_dev_ptr = nullptr;
+	} else {
+		/* warn, but not an error */
+		warnx("already stopped.");
+	}
+	exit(0);
 }
 
 /**
@@ -2160,7 +2183,7 @@ factorytest(bool external_bus)
 void
 usage()
 {
-	warnx("missing command: try 'start', 'info', 'test', 'reset', 'regdump', 'factorytest', 'testerror'");
+	warnx("missing command: try 'start', 'info', 'test', 'stop',\n'reset', 'regdump', 'factorytest', 'testerror'");
 	warnx("options:");
 	warnx("    -X    (external bus)");
 	warnx("    -R rotation");
@@ -2196,38 +2219,50 @@ mpu6000_main(int argc, char *argv[])
 	 * Start/load the driver.
 
 	 */
-	if (!strcmp(verb, "start"))
+	if (!strcmp(verb, "start")) {
 		mpu6000::start(external_bus, rotation);
+	}
+
+	if (!strcmp(verb, "stop")) {
+		mpu6000::stop(external_bus);
+	}
 
 	/*
 	 * Test the driver/device.
 	 */
-	if (!strcmp(verb, "test"))
+	if (!strcmp(verb, "test")) {
 		mpu6000::test(external_bus);
+	}
 
 	/*
 	 * Reset the driver.
 	 */
-	if (!strcmp(verb, "reset"))
+	if (!strcmp(verb, "reset")) {
 		mpu6000::reset(external_bus);
+	}
 
 	/*
 	 * Print driver information.
 	 */
-	if (!strcmp(verb, "info"))
+	if (!strcmp(verb, "info")) {
 		mpu6000::info(external_bus);
+	}
 
 	/*
 	 * Print register information.
 	 */
-	if (!strcmp(verb, "regdump"))
+	if (!strcmp(verb, "regdump")) {
 		mpu6000::regdump(external_bus);
+	}
 
-	if (!strcmp(verb, "factorytest"))
+	if (!strcmp(verb, "factorytest")) {
 		mpu6000::factorytest(external_bus);
+	}
 
-	if (!strcmp(verb, "testerror"))
+	if (!strcmp(verb, "testerror")) {
 		mpu6000::testerror(external_bus);
+	}
 
-	errx(1, "unrecognized command, try 'start', 'test', 'reset', 'info', 'regdump', 'factorytest' or 'testerror'");
+	mpu6000::usage();
+	exit(1);
 }

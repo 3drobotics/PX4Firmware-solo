@@ -36,7 +36,6 @@
  */
 
 #include "baro.hpp"
-#include <drivers/device/ringbuffer.h>
 #include <cmath>
 
 const char *const UavcanBarometerBridge::NAME = "baro";
@@ -56,7 +55,7 @@ int UavcanBarometerBridge::init()
 	}
 
 	/* allocate basic report buffers */
-	_reports = new RingBuffer(2, sizeof(baro_report));
+	_reports = new ringbuffer::RingBuffer(2, sizeof(baro_report));
 	if (_reports == nullptr)
 		return -1;
 
@@ -131,7 +130,7 @@ int UavcanBarometerBridge::ioctl(struct file *filp, int cmd, unsigned long arg)
 void UavcanBarometerBridge::air_data_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::air_data::StaticAirData> &msg)
 {
 	baro_report report;
-	
+
 	report.timestamp   = msg.getMonotonicTimestamp().toUSec();
 	report.temperature = msg.static_temperature;
 	report.pressure    = msg.static_pressure / 100.0F;  // Convert to millibar
@@ -141,15 +140,15 @@ void UavcanBarometerBridge::air_data_sub_cb(const uavcan::ReceivedDataStructure<
 	 * Altitude computation
 	 * Refer to the MS5611 driver for details
 	 */
-	const float T1 = 15.0f + 273.15f; // temperature at base height in Kelvin
-	const float a  = -6.5f / 1000;   // temperature gradient in degrees per metre
-	const float g  = 9.80665f;       // gravity constant in m/s/s
-	const float R  = 287.05f;        // ideal gas constant in J/kg/K
+	const double T1 = 15.0 + 273.15; // temperature at base height in Kelvin
+	const double a  = -6.5 / 1000;   // temperature gradient in degrees per metre
+	const double g  = 9.80665;       // gravity constant in m/s/s
+	const double R  = 287.05;        // ideal gas constant in J/kg/K
 
-	const float p1 = _msl_pressure / 1000.0f;      // current pressure at MSL in kPa
-	const float p = msg.static_pressure / 1000.0f; // measured pressure in kPa
+	const double p1 = _msl_pressure / 1000.0;      // current pressure at MSL in kPa
+	const double p = double(msg.static_pressure) / 1000.0; // measured pressure in kPa
 
-	report.altitude = (((std::powf((p / p1), (-(a * R) / g))) * T1) - T1) / a;
+	report.altitude = (((std::pow((p / p1), (-(a * R) / g))) * T1) - T1) / a;
 
 	// add to the ring buffer
 	_reports->force(&report);

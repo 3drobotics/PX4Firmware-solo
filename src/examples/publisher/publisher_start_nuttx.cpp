@@ -54,7 +54,7 @@ extern int main(int argc, char **argv);
 extern "C" __EXPORT int publisher_main(int argc, char *argv[]);
 int publisher_main(int argc, char *argv[])
 {
-	if (argc < 1) {
+	if (argc < 2) {
 		errx(1, "usage: publisher {start|stop|status}");
 	}
 
@@ -68,7 +68,7 @@ int publisher_main(int argc, char *argv[])
 
 		task_should_exit = false;
 
-		daemon_task = task_spawn_cmd("publisher",
+		daemon_task = px4_task_spawn_cmd("publisher",
 				       SCHED_DEFAULT,
 				       SCHED_PRIORITY_MAX - 5,
 				       2000,

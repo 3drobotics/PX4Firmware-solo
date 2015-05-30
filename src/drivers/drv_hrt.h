@@ -39,6 +39,7 @@
 
 #pragma once
 
+#include <px4_posix.h>
 #include <sys/types.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -127,7 +128,8 @@ __EXPORT extern void	hrt_call_at(struct hrt_call *entry, hrt_abstime calltime, h
  * Note thet the interval is timed between scheduled, not actual, call times, so the call rate may
  * jitter but should not drift.
  */
-__EXPORT extern void	hrt_call_every(struct hrt_call *entry, hrt_abstime delay, hrt_abstime interval, hrt_callout callout, void *arg);
+__EXPORT extern void	hrt_call_every(struct hrt_call *entry, hrt_abstime delay, hrt_abstime interval,
+				       hrt_callout callout, void *arg);
 
 /*
  * If this returns true, the entry has been invoked and removed from the callout list,

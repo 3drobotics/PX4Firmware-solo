@@ -35,23 +35,24 @@
 # MAVLink protocol to uORB interface process
 #
 
-MODULE_COMMAND	 = mavlink
-SRCS		 += mavlink_main.cpp \
-			mavlink.c \
-			mavlink_receiver.cpp \
+MODULE_COMMAND  = mavlink
+
+SRCS 		 +=	mavlink.c \
+		  	mavlink_main.cpp \
 			mavlink_mission.cpp \
 			mavlink_parameters.cpp \
 			mavlink_orb_subscription.cpp \
 			mavlink_messages.cpp \
 			mavlink_stream.cpp \
 			mavlink_rate_limiter.cpp \
-			mavlink_ftp.cpp
+			mavlink_receiver.cpp \
+			mavlink_ftp.cpp 
 
 INCLUDE_DIRS	 += $(MAVLINK_SRC)/include/mavlink
 
 MAXOPTIMIZATION	 = -Os
 
-MODULE_STACKSIZE = 1024
+MODULE_STACKSIZE = 1200
 
 EXTRACXXFLAGS	= -Weffc++ -Wno-attributes -Wno-packed
 

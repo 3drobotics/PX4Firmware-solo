@@ -39,7 +39,7 @@
  * @author Lorenz Meier <lm@inf.ethz.ch>
  */
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 
 #include <systemlib/param/param.h>
 
@@ -218,7 +218,7 @@ PARAM_DEFINE_FLOAT(PE_ACC_PNOISE, 0.25f);
  * @max 0.00001
  * @group Position Estimator
  */
-PARAM_DEFINE_FLOAT(PE_GBIAS_PNOISE, 1e-07f);
+PARAM_DEFINE_FLOAT(PE_GBIAS_PNOISE, 1e-06f);
 
 /**
  * Accelerometer bias estimate process noise
@@ -230,7 +230,7 @@ PARAM_DEFINE_FLOAT(PE_GBIAS_PNOISE, 1e-07f);
  * @max 0.001
  * @group Position Estimator
  */
-PARAM_DEFINE_FLOAT(PE_ABIAS_PNOISE, 0.00005f);
+PARAM_DEFINE_FLOAT(PE_ABIAS_PNOISE, 0.0002f);
 
 /**
  * Magnetometer earth frame offsets process noise

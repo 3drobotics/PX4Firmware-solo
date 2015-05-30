@@ -43,19 +43,22 @@ using namespace px4;
 
 void rc_channels_callback_function(const px4_rc_channels &msg);
 
-class SubscriberExample {
+class SubscriberExample
+{
 public:
 	SubscriberExample();
 
 	~SubscriberExample() {};
 
 	void spin() {_n.spin();}
+
 protected:
 	px4::NodeHandle _n;
 	px4::ParameterInt _p_sub_interv;
 	px4::ParameterFloat _p_test_float;
-	px4::Subscriber<px4_rc_channels> * _sub_rc_chan;
+	px4::Subscriber<px4_rc_channels> *_sub_rc_chan;
 
+	AppState _appState;
 
 	void rc_channels_callback(const px4_rc_channels &msg);
 	void vehicle_attitude_callback(const px4_vehicle_attitude &msg);

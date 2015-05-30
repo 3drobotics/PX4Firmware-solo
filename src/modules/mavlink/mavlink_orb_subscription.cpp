@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2014 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2014, 2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -36,6 +36,7 @@
  * uORB subscription implementation.
  *
  * @author Anton Babushkin <anton.babushkin@me.com>
+ * @author Lorenz Meier <lorenz@px4.io>
  */
 
 #include <unistd.h>
@@ -85,8 +86,10 @@ MavlinkOrbSubscription::update(uint64_t *time, void* data)
 	}
 
 	if (orb_copy(_topic, _fd, data)) {
-		/* error copying topic data */
-		memset(data, 0, _topic->o_size);
+		if (data) {
+			/* error copying topic data */
+			memset(data, 0, _topic->o_size);
+		}
 		return false;
 
 	} else {
