@@ -181,7 +181,7 @@ private:
 	// internal variables
 	bool			_enabled;	///< true if we have successfully connected to battery
 	work_s			_work;		///< work queue for scheduling reads
-	RingBuffer		*_reports;	///< buffer of recorded voltages, currents
+	ringbuffer::RingBuffer *_reports;	///< buffer of recorded voltages, currents
 	struct battery_status_s _last_report;	///< last published report, used for test()
 	orb_advert_t		_batt_topic;	///< uORB battery topic
 	orb_id_t		_batt_orb_id;	///< uORB battery topic ID
@@ -239,7 +239,7 @@ BATT_SMBUS::init()
 
 	} else {
 		// allocate basic report buffers
-		_reports = new RingBuffer(2, sizeof(struct battery_status_s));
+		_reports = new ringbuffer::RingBuffer(2, sizeof(struct battery_status_s));
 
 		if (_reports == nullptr) {
 			ret = ENOTTY;
