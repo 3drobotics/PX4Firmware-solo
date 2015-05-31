@@ -337,11 +337,19 @@ OREOLED::cycle()
 						log("oreoled %u ok - in bootloader", (unsigned)i);
 						_healthy[i] = true;
 						_num_healthy++;
-						_in_boot[i] = true;
-						_num_inboot++;
 
+						/* If slaves are in application record that so we can reset if we need to bootload */
+						/* This additional check is required for LED firmwares below v1.3 and can be
+						   deprecated once all LEDs in the wild have firmware >= v1.3 */
+						if(bootloader_ping(i) == OK) {
+							_in_boot[i] = true;
+							_num_inboot++;
+						}
+
+					/* Check for a reply with a checksum offset of 1,
+					   which indicates a response from firmwares >= 1.3 */
 					} else if (reply[1] == OREOLED_BASE_I2C_ADDR + i &&
-					    reply[2] == msg[sizeof(msg) - 1]+1) {
+					    reply[2] == msg[sizeof(msg) - 1] + 1) {
 						log("oreoled %u ok - in application", (unsigned)i);
 						_healthy[i] = true;
 						_num_healthy++;
@@ -367,18 +375,16 @@ OREOLED::cycle()
 	} else if (_alwaysupdate) {
 		/* reset each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			if (_healthy[i]) {
+			if (_healthy[i] && !_in_boot[i]) {
 				/* reset the LED if it's not in the bootloader */
 				/* (this happens during a pixhawk OTA update, since the LEDs stay powered) */
-				if (!_in_boot[i]) {
-					bootloader_app_reset(i);
-				}
+				bootloader_app_reset(i);
 			}
 		}
 
 		/* attempt to update each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			if (_healthy[i]) {
+			if (_healthy[i] && _in_boot[i]) {
 				/* flash the new firmware */
 				bootloader_flash(i);
 			}
@@ -386,7 +392,7 @@ OREOLED::cycle()
 
 		/* boot each healthy LED */
 		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-			if (_healthy[i]) {
+			if (_healthy[i] && _in_boot[i]) {
 				/* boot the application */
 				bootloader_boot(i);
 			}
