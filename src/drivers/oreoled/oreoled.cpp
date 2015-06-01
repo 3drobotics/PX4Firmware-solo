@@ -998,6 +998,7 @@ OREOLED::bootloader_flash(int led_num)
 
 	/* attempt to stat the file */
 	if (stat(OREOLED_FW_FILE, &s) != 0) {
+		::close(fd);
 		return -1;
 	}
 
@@ -1005,6 +1006,7 @@ OREOLED::bootloader_flash(int led_num)
 
 	/* sanity-check file size */
 	if (fw_length > OREOLED_FW_FILE_SIZE_LIMIT) {
+		::close(fd);
 		return -1;
 	}
 
@@ -1012,19 +1014,22 @@ OREOLED::bootloader_flash(int led_num)
 
 	/* check that the buffer has been allocated */
 	if (buf == NULL) {
+		::close(fd);
 		return -1;
 	}
 
 	/* check that the firmware can be read into the buffer */
 	if (::read(fd, buf, s.st_size) != s.st_size) {
+		::close(fd);
+		delete[] buf;
 		return -1;
 	}
+
+	::close(fd);
 
 	/* Grab the version bytes from the binary */
 	uint8_t version_major = buf[0];
 	uint8_t version_minor = buf[1];
-
-	::close(fd);
 
 	/* calculate flash pages (rounded up to nearest integer) */
 	uint8_t flash_pages = ((fw_length + 64 - 1) / 64);
@@ -1072,6 +1077,7 @@ OREOLED::bootloader_flash(int led_num)
 
 				} else {
 					warnx("bl flash %ia failed on LED %i", page_idx, boot_cmd.led_num);
+					delete[] buf;
 					return -1;
 				}
 			}
@@ -1111,6 +1117,7 @@ OREOLED::bootloader_flash(int led_num)
 
 				} else {
 					errx(1, "bl flash %ib failed on LED %i", page_idx, boot_cmd.led_num);
+					delete[] buf;
 					return -1;
 				}
 			}
@@ -1166,6 +1173,7 @@ OREOLED::bootloader_flash(int led_num)
 
 			} else {
 				warnx("bl finalise failed on LED %i", boot_cmd.led_num);
+				delete[] buf;
 				return -1;
 			}
 		}
@@ -1176,7 +1184,7 @@ OREOLED::bootloader_flash(int led_num)
 	usleep(OREOLED_BOOT_FLASH_WAITMS * 1000 * 10);
 
 	/* clean up file buffer */
-	delete buf;
+	delete[] buf;
 
 	_is_bootloading = false;
 	return 1;
@@ -1267,6 +1275,7 @@ OREOLED::bootloader_fw_checksum(void)
 
 		/* attempt to stat the file */
 		if (stat(OREOLED_FW_FILE, &s) != 0) {
+			::close(fd);
 			return -1;
 		}
 
@@ -1274,6 +1283,7 @@ OREOLED::bootloader_fw_checksum(void)
 
 		/* sanity-check file size */
 		if (fw_length > OREOLED_FW_FILE_SIZE_LIMIT) {
+			::close(fd);
 			return -1;
 		}
 
@@ -1281,11 +1291,14 @@ OREOLED::bootloader_fw_checksum(void)
 
 		/* check that the buffer has been allocated */
 		if (buf == NULL) {
+			::close(fd);
 			return -1;
 		}
 
 		/* check that the firmware can be read into the buffer */
 		if (::read(fd, buf, s.st_size) != s.st_size) {
+			::close(fd);
+			delete[] buf;
 			return -1;
 		}
 
@@ -1299,6 +1312,8 @@ OREOLED::bootloader_fw_checksum(void)
 		for (uint16_t j = 2 + OREOLED_FW_FILE_HEADER_LENGTH; j < s.st_size; j += 2) {
 			app_checksum ^= (buf[j] << 8) | buf[j + 1];
 		}
+
+		delete[] buf;
 
 		warnx("fw length = %i", fw_length);
 		warnx("fw checksum = %i", app_checksum);
