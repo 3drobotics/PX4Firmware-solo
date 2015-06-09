@@ -41,16 +41,16 @@
  * @author Lorenz Meier <lm@inf.ethz.ch>
  * @author Petri Tanskanen <petri.tanskanen@inf.ethz.ch>
  */
-#include <nuttx/config.h>
-#include <nuttx/sched.h>
+#include <px4_config.h>
+//#include <nuttx/sched.h>
 
 #include <sys/types.h>
 #include <stdint.h>
 #include <stdbool.h>
 
-#include <arch/arch.h>
+//#include <arch/arch.h>
 
-#include <debug.h>
+//#include <debug.h>
 
 #include <sys/time.h>
 
@@ -60,6 +60,8 @@
 #include "cpuload.h"
 
 #ifdef CONFIG_SCHED_INSTRUMENTATION
+
+#ifdef __PX4_NUTTX
 
 __EXPORT void sched_note_start(FAR struct tcb_s *tcb);
 __EXPORT void sched_note_stop(FAR struct tcb_s *tcb);
@@ -97,7 +99,8 @@ void cpuload_initialize_once()
 		system_load.tasks[system_load.total_count].start_time = now;
 		system_load.tasks[system_load.total_count].total_runtime = 0;
 		system_load.tasks[system_load.total_count].curr_start_time = 0;
-		system_load.tasks[system_load.total_count].tcb = sched_gettcb(system_load.total_count);	// it is assumed that these static threads have consecutive PIDs
+		system_load.tasks[system_load.total_count].tcb = sched_gettcb(
+					system_load.total_count);	// it is assumed that these static threads have consecutive PIDs
 		system_load.tasks[system_load.total_count].valid = true;
 	}
 }
@@ -166,4 +169,7 @@ void sched_note_switch(FAR struct tcb_s *pFromTcb, FAR struct tcb_s *pToTcb)
 	}
 }
 
+#else
+__EXPORT struct system_load_s system_load;
+#endif
 #endif /* CONFIG_SCHED_INSTRUMENTATION */

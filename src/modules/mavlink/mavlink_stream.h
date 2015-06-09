@@ -73,8 +73,6 @@ public:
 	 * @return 0 if updated / sent, -1 if unchanged
 	 */
 	int update(const hrt_abstime t);
-	static MavlinkStream *new_instance(const Mavlink *mavlink);
-	static const char *get_name_static();
 	virtual const char *get_name() const = 0;
 	virtual uint8_t get_id() = 0;
 
@@ -89,17 +87,19 @@ public:
 	virtual unsigned get_size() = 0;
 
 protected:
-	Mavlink *    _mavlink;
+	Mavlink     *_mavlink;
 	unsigned int _interval;
 
+#ifndef __PX4_QURT
 	virtual void send(const hrt_abstime t) = 0;
+#endif
 
 private:
 	hrt_abstime _last_sent;
 
 	/* do not allow top copying this class */
-	MavlinkStream(const MavlinkStream&);
-	MavlinkStream& operator=(const MavlinkStream&);
+	MavlinkStream(const MavlinkStream &);
+	MavlinkStream &operator=(const MavlinkStream &);
 };
 
 

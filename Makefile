@@ -33,6 +33,13 @@
 # Top-level Makefile for building PX4 firmware images.
 #
 
+TARGETS	:= nuttx posix qurt
+EXPLICIT_TARGET	:= $(filter $(TARGETS),$(MAKECMDGOALS))
+ifneq ($(EXPLICIT_TARGET),)
+    export PX4_TARGET_OS=$(EXPLICIT_TARGET)
+    export GOALS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+endif
+
 #
 # Get path and tool configuration
 #
@@ -48,18 +55,25 @@ GIT_DESC := $(shell git log -1 --pretty=format:%H)
 ifneq ($(words $(GIT_DESC)),1)
     GIT_DESC := "unknown_git_version"
 endif
-export GIT_DESC
+
+GIT_DESC_SHORT := $(shell echo $(GIT_DESC) | cut -c1-16)
+
+$(shell mkdir -p $(BUILD_DIR))
+$(shell rm -f $(BUILD_DIR)git_version.*)
+$(shell echo "#include <systemlib/git_version.h>" > $(BUILD_DIR)git_version.c)
+$(shell echo "const char* px4_git_version = \"$(GIT_DESC)\";" >> $(BUILD_DIR)git_version.c)
+$(shell echo "const uint64_t px4_git_version_binary = 0x$(GIT_DESC_SHORT);" >> $(BUILD_DIR)git_version.c)
 
 #
 # Canned firmware configurations that we (know how to) build.
 #
-KNOWN_CONFIGS		:= $(subst config_,,$(basename $(notdir $(wildcard $(PX4_MK_DIR)config_*.mk))))
+KNOWN_CONFIGS		:= $(subst config_,,$(basename $(notdir $(wildcard $(PX4_MK_DIR)/$(PX4_TARGET_OS)/config_*.mk))))
 CONFIGS			?= $(KNOWN_CONFIGS)
 
 #
 # Boards that we (know how to) build NuttX export kits for.
 #
-KNOWN_BOARDS		:= $(subst board_,,$(basename $(notdir $(wildcard $(PX4_MK_DIR)board_*.mk))))
+KNOWN_BOARDS		:= $(subst board_,,$(basename $(notdir $(wildcard $(PX4_MK_DIR)/$(PX4_TARGET_OS)/board_*.mk))))
 BOARDS			?= $(KNOWN_BOARDS)
 
 #
@@ -97,6 +111,7 @@ upload:
 endif
 endif
 
+ifeq ($(PX4_TARGET_OS),nuttx) 
 #
 # Built products
 #
@@ -124,7 +139,7 @@ $(STAGED_FIRMWARES): $(IMAGE_DIR)%.px4: $(BUILD_DIR)%.build/firmware.px4
 .PHONY: $(FIRMWARES)
 $(BUILD_DIR)%.build/firmware.px4: config   = $(patsubst $(BUILD_DIR)%.build/firmware.px4,%,$@)
 $(BUILD_DIR)%.build/firmware.px4: work_dir = $(BUILD_DIR)$(config).build/
-$(FIRMWARES): $(BUILD_DIR)%.build/firmware.px4:	checksubmodules generateuorbtopicheaders
+$(FIRMWARES): $(BUILD_DIR)%.build/firmware.px4:	generateuorbtopicheaders checksubmodules
 	@$(ECHO) %%%%
 	@$(ECHO) %%%% Building $(config) in $(work_dir)
 	@$(ECHO) %%%%
@@ -209,12 +224,27 @@ menuconfig:
 	@$(ECHO) ""
 	@$(ECHO) "The menuconfig goal must be invoked without any other goal being specified"
 	@$(ECHO) ""
+
 endif
 
 $(NUTTX_SRC): checksubmodules
 
 $(UAVCAN_DIR):
 	$(Q) (./Tools/check_submodules.sh)
+
+endif
+
+ifeq ($(PX4_TARGET_OS),nuttx)
+# TODO
+# Move the above nuttx specific rules into $(PX4_BASE)makefiles/firmware_nuttx.mk
+endif
+ifeq ($(PX4_TARGET_OS),posix)
+include $(PX4_BASE)makefiles/firmware_posix.mk
+endif
+ifeq ($(PX4_TARGET_OS),qurt)
+include $(PX4_BASE)makefiles/firmware_qurt.mk
+endif
+
 
 .PHONY: checksubmodules
 checksubmodules:
@@ -229,14 +259,14 @@ MSG_DIR = $(PX4_BASE)msg
 UORB_TEMPLATE_DIR = $(PX4_BASE)msg/templates/uorb
 MULTIPLATFORM_TEMPLATE_DIR = $(PX4_BASE)msg/templates/px4/uorb
 TOPICS_DIR = $(PX4_BASE)src/modules/uORB/topics
-MULTIPLATFORM_HEADER_DIR = $(PX4_BASE)src/platforms/nuttx/px4_messages
+MULTIPLATFORM_HEADER_DIR = $(PX4_BASE)src/platforms/$(PX4_TARGET_OS)/px4_messages
 MULTIPLATFORM_PREFIX = px4_
 TOPICHEADER_TEMP_DIR = $(BUILD_DIR)topics_temporary
 GENMSG_PYTHONPATH = $(PX4_BASE)Tools/genmsg/src
 GENCPP_PYTHONPATH = $(PX4_BASE)Tools/gencpp/src
 
 .PHONY: generateuorbtopicheaders
-generateuorbtopicheaders:
+generateuorbtopicheaders: checksubmodules
 	@$(ECHO) "Generating uORB topic headers"
 	$(Q) (PYTHONPATH=$(GENMSG_PYTHONPATH):$(GENCPP_PYTHONPATH):$(PYTHONPATH) $(PYTHON) \
 		$(PX4_BASE)Tools/px_generate_uorb_topic_headers.py \
@@ -255,12 +285,29 @@ testbuild:
 	$(Q) (cd $(PX4_BASE) && $(MAKE) distclean && $(MAKE) archives && $(MAKE) -j8)
 	$(Q) (zip -r Firmware.zip $(PX4_BASE)/Images)
 
+nuttx posix qurt: 
+ifeq ($(GOALS),)
+	make PX4_TARGET_OS=$@ $(GOALS)
+else
+	export PX4_TARGET_OS=$@
+endif
+
+posixrun:
+	Tools/posix_run.sh
+
+qurtrun:
+	make PX4_TARGET_OS=qurt sim
+
 #
 # Unittest targets. Builds and runs the host-level
 # unit tests.
 .PHONY: tests
 tests:	generateuorbtopicheaders
 	$(Q) (mkdir -p $(PX4_BASE)/unittests/build && cd $(PX4_BASE)/unittests/build && cmake .. && $(MAKE) unittests)
+
+.PHONY: format check_format
+check_format:
+	$(Q) (./Tools/check_code_style.sh | sort -n)
 
 #
 # Cleanup targets.  'clean' should remove all built products and force
@@ -271,6 +318,7 @@ tests:	generateuorbtopicheaders
 clean:
 	@echo > /dev/null
 	$(Q) $(RMDIR) $(BUILD_DIR)*.build
+	$(Q) $(REMOVE) $(BUILD_DIR)git_version.*
 	$(Q) $(REMOVE) $(IMAGE_DIR)*.px4
 
 .PHONY:	distclean
@@ -292,9 +340,11 @@ help:
 	@$(ECHO) "  Available targets:"
 	@$(ECHO) "  ------------------"
 	@$(ECHO) ""
+ifeq ($(PX4_TARGET_OS),nuttx)
 	@$(ECHO) "  archives"
 	@$(ECHO) "    Build the NuttX RTOS archives that are used by the firmware build."
 	@$(ECHO) ""
+endif
 	@$(ECHO) "  all"
 	@$(ECHO) "    Build all firmware configs: $(CONFIGS)"
 	@$(ECHO) "    A limited set of configs can be built with CONFIGS=<list-of-configs>"
@@ -307,6 +357,7 @@ help:
 	@$(ECHO) "  clean"
 	@$(ECHO) "    Remove all firmware build pieces."
 	@$(ECHO) ""
+ifeq ($(PX4_TARGET_OS),nuttx)
 	@$(ECHO) "  distclean"
 	@$(ECHO) "    Remove all compilation products, including NuttX RTOS archives."
 	@$(ECHO) ""
@@ -315,6 +366,7 @@ help:
 	@$(ECHO) "    firmware to the board when the build is complete. Not supported for"
 	@$(ECHO) "    all configurations."
 	@$(ECHO) ""
+endif
 	@$(ECHO) "  testbuild"
 	@$(ECHO) "    Perform a complete clean build of the entire tree."
 	@$(ECHO) ""

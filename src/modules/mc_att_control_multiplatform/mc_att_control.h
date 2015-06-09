@@ -88,11 +88,13 @@ private:
 	bool		_task_should_exit;			/**< if true, sensor task should exit */
 	bool		_actuators_0_circuit_breaker_enabled;	/**< circuit breaker to suppress output */
 
-	px4::Publisher<px4_vehicle_attitude_setpoint> *	_att_sp_pub;			/**< attitude setpoint publication */
-	px4::Publisher<px4_vehicle_rates_setpoint> *	_v_rates_sp_pub;		/**< rate setpoint publication */
-	px4::Publisher<px4_actuator_controls_0> *	_actuators_0_pub;		/**< attitude actuator controls publication */
+	px4::Publisher<px4_vehicle_attitude_setpoint> 	*_att_sp_pub;			/**< attitude setpoint publication */
+	px4::Publisher<px4_vehicle_rates_setpoint> 	*_v_rates_sp_pub;		/**< rate setpoint publication */
+	px4::Publisher<px4_actuator_controls_0> 	*_actuators_0_pub;		/**< attitude actuator controls publication */
 
 	px4::NodeHandle _n;
+
+	px4::AppState _appState;
 
 	struct {
 		px4::ParameterFloat roll_p;
@@ -110,9 +112,6 @@ private:
 		px4::ParameterFloat yaw_ff;
 		px4::ParameterFloat yaw_rate_max;
 
-		px4::ParameterFloat man_roll_max;
-		px4::ParameterFloat man_pitch_max;
-		px4::ParameterFloat man_yaw_max;
 		px4::ParameterFloat acro_roll_max;
 		px4::ParameterFloat acro_pitch_max;
 		px4::ParameterFloat acro_yaw_max;

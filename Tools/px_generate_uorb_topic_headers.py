@@ -50,11 +50,11 @@ except ImportError as e:
         print('''
 Required python packages not installed.
 
-On a Debian/Ubuntu syystem please run:
+On a Debian/Ubuntu system please run:
 
   sudo apt-get install python-empy
   sudo pip install catkin_pkg
-  
+
 On MacOS please run:
   sudo pip install empy catkin_pkg
 
@@ -95,13 +95,19 @@ def convert_dir(inputdir, outputdir, templatedir):
         """
         includepath = incl_default + [':'.join([package, inputdir])]
         for f in os.listdir(inputdir):
+                # Ignore hidden files
+                if f.startswith("."):
+                        continue
+
                 fn = os.path.join(inputdir, f)
-                if os.path.isfile(fn):
-                        convert_file(
-                            fn,
-                            outputdir,
-                            templatedir,
-                            includepath)
+                # Only look at actual files
+                if not os.path.isfile(fn):
+                        continue
+
+                convert_file(fn,
+                             outputdir,
+                             templatedir,
+                             includepath)
 
 
 def copy_changed(inputdir, outputdir, prefix=''):

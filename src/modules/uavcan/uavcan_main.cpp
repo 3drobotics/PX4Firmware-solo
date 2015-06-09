@@ -31,7 +31,7 @@
  *
  ****************************************************************************/
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -42,6 +42,7 @@
 #include <systemlib/mixer/mixer.h>
 #include <systemlib/board_serial.h>
 #include <systemlib/scheduling_priorities.h>
+#include <systemlib/git_version.h>
 #include <version/version.h>
 #include <arch/board/board.h>
 #include <arch/chip/chip.h>
@@ -194,7 +195,7 @@ int UavcanNode::start(uavcan::NodeID node_id, uint32_t bitrate)
 	 * Start the task. Normally it should never exit.
 	 */
 	static auto run_trampoline = [](int, char *[]) {return UavcanNode::_instance->run();};
-	_instance->_task = task_spawn_cmd("uavcan", SCHED_DEFAULT, SCHED_PRIORITY_ACTUATOR_OUTPUTS, StackSize,
+	_instance->_task = px4_task_spawn_cmd("uavcan", SCHED_DEFAULT, SCHED_PRIORITY_ACTUATOR_OUTPUTS, StackSize,
 			      static_cast<main_t>(run_trampoline), nullptr);
 
 	if (_instance->_task < 0) {
@@ -210,9 +211,9 @@ void UavcanNode::fill_node_info()
 	/* software version */
 	uavcan::protocol::SoftwareVersion swver;
 
-	// Extracting the first 8 hex digits of FW_GIT and converting them to int
+	// Extracting the first 8 hex digits of GIT_VERSION and converting them to int
 	char fw_git_short[9] = {};
-	std::memmove(fw_git_short, FW_GIT, 8);
+	std::memmove(fw_git_short, px4_git_version, 8);
 	assert(fw_git_short[8] == '\0');
 	char *end = nullptr;
 	swver.vcs_commit = std::strtol(fw_git_short, &end, 16);
@@ -397,8 +398,8 @@ int UavcanNode::run()
 			    (_poll_fds[_actuator_direct_poll_fd_num].revents & POLLIN) &&
 			    orb_copy(ORB_ID(actuator_direct), _actuator_direct_sub, &_actuator_direct) == OK &&
 			    !_test_in_progress) {
-				if (_actuator_direct.nvalues > NUM_ACTUATOR_OUTPUTS) {
-					_actuator_direct.nvalues = NUM_ACTUATOR_OUTPUTS;
+				if (_actuator_direct.nvalues > actuator_outputs_s::NUM_ACTUATOR_OUTPUTS) {
+					_actuator_direct.nvalues = actuator_outputs_s::NUM_ACTUATOR_OUTPUTS;
 				}
 				memcpy(&_outputs.output[0], &_actuator_direct.values[0],
 				       _actuator_direct.nvalues*sizeof(float));
@@ -409,7 +410,7 @@ int UavcanNode::run()
 			// can we mix?
 			if (_test_in_progress) {
 				memset(&_outputs, 0, sizeof(_outputs));
-				if (_test_motor.motor_number < NUM_ACTUATOR_OUTPUTS) {
+				if (_test_motor.motor_number < actuator_outputs_s::NUM_ACTUATOR_OUTPUTS) {
 					_outputs.output[_test_motor.motor_number] = _test_motor.value*2.0f-1.0f;
 					_outputs.noutputs = _test_motor.motor_number+1;
 				}
@@ -421,7 +422,7 @@ int UavcanNode::run()
 				unsigned num_outputs_max = 8;
 
 				// Do mixing
-				_outputs.noutputs = _mixers->mix(&_outputs.output[0], num_outputs_max);
+				_outputs.noutputs = _mixers->mix(&_outputs.output[0], num_outputs_max, NULL);
 
 				new_output = true;
 			}
@@ -698,11 +699,13 @@ int uavcan_main(int argc, char *argv[])
 
 	if (!std::strcmp(argv[1], "start")) {
 		if (UavcanNode::instance()) {
-			errx(1, "already started");
+			// Already running, no error
+			warnx("already started");
+			::exit(0);
 		}
 
 		// Node ID
-		int32_t node_id = 0;
+		int32_t node_id = 1;
 		(void)param_get(param_find("UAVCAN_NODE_ID"), &node_id);
 
 		if (node_id < 0 || node_id > uavcan::NodeID::Max || !uavcan::NodeID(node_id).isUnicast()) {
@@ -711,7 +714,7 @@ int uavcan_main(int argc, char *argv[])
 		}
 
 		// CAN bitrate
-		int32_t bitrate = 0;
+		int32_t bitrate = 1000000;
 		(void)param_get(param_find("UAVCAN_BITRATE"), &bitrate);
 
 		// Start

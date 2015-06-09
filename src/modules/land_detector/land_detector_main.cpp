@@ -136,10 +136,10 @@ static int land_detector_start(const char *mode)
 	}
 
 	//Start new thread task
-	_landDetectorTaskID = task_spawn_cmd("land_detector",
+	_landDetectorTaskID = px4_task_spawn_cmd("land_detector",
 					     SCHED_DEFAULT,
 					     SCHED_PRIORITY_DEFAULT,
-					     1200,
+					     1000,
 					     (main_t)&land_detector_deamon_thread,
 					     nullptr);
 
@@ -151,19 +151,25 @@ static int land_detector_start(const char *mode)
 	/* avoid memory fragmentation by not exiting start handler until the task has fully started */
 	const uint32_t timeout = hrt_absolute_time() + 5000000; //5 second timeout
 
-	while (!land_detector_task->isRunning()) {
-		usleep(50000);
-		printf(".");
-		fflush(stdout);
+	/* avoid printing dots just yet and do one sleep before the first check */
+	usleep(10000);
 
-		if (hrt_absolute_time() > timeout) {
-			err(1, "start failed - timeout");
-			land_detector_stop();
-			exit(1);
+	/* check if the waiting involving dots and a newline are still needed */
+	if (!land_detector_task->isRunning()) {
+		while (!land_detector_task->isRunning()) {
+
+			printf(".");
+			fflush(stdout);
+			usleep(50000);
+
+			if (hrt_absolute_time() > timeout) {
+				err(1, "start failed - timeout");
+				land_detector_stop();
+				exit(1);
+			}
 		}
+		printf("\n");
 	}
-
-	printf("\n");
 
 	//Remember current active mode
 	strncpy(_currentMode, mode, 12);
@@ -178,9 +184,8 @@ static int land_detector_start(const char *mode)
 int land_detector_main(int argc, char *argv[])
 {
 
-	if (argc < 1) {
-		warnx("usage: land_detector {start|stop|status} [mode]\nmode can either be 'fixedwing' or 'multicopter'");
-		exit(0);
+	if (argc < 2) {
+		goto exiterr;
 	}
 
 	if (argc >= 2 && !strcmp(argv[1], "start")) {
@@ -196,7 +201,7 @@ int land_detector_main(int argc, char *argv[])
 		if (land_detector_task) {
 
 			if (land_detector_task->isRunning()) {
-				warnx("running (%s)", _currentMode);
+				warnx("running (%s): %s", _currentMode, (land_detector_task->isLanded()) ? "LANDED" : "IN AIR");
 
 			} else {
 				errx(1, "exists, but not running (%s)", _currentMode);
@@ -209,6 +214,8 @@ int land_detector_main(int argc, char *argv[])
 		}
 	}
 
-	warn("usage: land_detector {start|stop|status} [mode]\nmode can either be 'fixedwing' or 'multicopter'");
+exiterr:
+	warnx("usage: land_detector {start|stop|status} [mode]");
+	warnx("mode can either be 'fixedwing' or 'multicopter'");
 	return 1;
 }

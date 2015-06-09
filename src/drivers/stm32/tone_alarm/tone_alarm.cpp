@@ -86,7 +86,7 @@
  *
  */
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 #include <debug.h>
 
 #include <drivers/device/device.h>
@@ -338,6 +338,7 @@ ToneAlarm::ToneAlarm() :
 	_default_tunes[TONE_PARACHUTE_RELEASE_TUNE] = "MFT255L16agagagag";			// parachute release
 	_default_tunes[TONE_EKF_WARNING_TUNE] = "MFT255L8ddd#d#eeff";				// ekf warning
 	_default_tunes[TONE_BARO_WARNING_TUNE] = "MFT255L4gf#fed#d";				// baro warning
+	_default_tunes[TONE_SINGLE_BEEP_TUNE] = "MFT100a8";                             // single beep
 
 	_tune_names[TONE_STARTUP_TUNE] = "startup";			// startup tune
 	_tune_names[TONE_ERROR_TUNE] = "error";				// ERROR tone
@@ -352,6 +353,7 @@ ToneAlarm::ToneAlarm() :
 	_tune_names[TONE_PARACHUTE_RELEASE_TUNE] = "parachute_release";	// parachute release
 	_tune_names[TONE_EKF_WARNING_TUNE] = "ekf_warning";				// ekf warning
 	_tune_names[TONE_BARO_WARNING_TUNE] = "baro_warning";			// baro warning
+	_tune_names[TONE_SINGLE_BEEP_TUNE] = "beep";                    // single beep
 }
 
 ToneAlarm::~ToneAlarm()
@@ -888,8 +890,9 @@ tone_alarm_main(int argc, char *argv[])
 	if (argc > 1) {
 		const char *argv1 = argv[1];
 
-		if (!strcmp(argv1, "start"))
-			play_tune(TONE_STARTUP_TUNE);
+		if (!strcmp(argv1, "start")) {
+			play_tune(TONE_STOP_TUNE);
+		}
 
 		if (!strcmp(argv1, "stop"))
 			play_tune(TONE_STOP_TUNE);

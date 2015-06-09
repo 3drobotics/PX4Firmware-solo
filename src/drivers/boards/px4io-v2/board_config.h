@@ -43,14 +43,14 @@
  * Included Files
  ******************************************************************************/
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 #include <nuttx/compiler.h>
 #include <stdint.h>
 
 /* these headers are not C++ safe */
 #include <stm32.h>
 #include <arch/board/board.h>
- 
+
 /******************************************************************************
  * Definitions
  ******************************************************************************/
@@ -117,7 +117,7 @@
 #define GPIO_SBUS_OUTPUT  (GPIO_OUTPUT|GPIO_CNF_OUTPP|GPIO_MODE_50MHz|GPIO_OUTPUT_CLEAR|GPIO_PORTB|GPIO_PIN10)
 #define GPIO_SBUS_OENABLE (GPIO_OUTPUT|GPIO_CNF_OUTPP|GPIO_MODE_50MHz|GPIO_OUTPUT_SET|GPIO_PORTB|GPIO_PIN4)
 
-/* 
+/*
  * High-resolution timer
  */
 #define HRT_TIMER		1	/* use timer1 for the HRT */

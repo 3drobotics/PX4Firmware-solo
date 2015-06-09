@@ -87,8 +87,18 @@ typedef uintptr_t	param_t;
  *
  * @param name		The canonical name of the parameter being looked up.
  * @return		A handle to the parameter, or PARAM_INVALID if the parameter does not exist.
+ *			This call will also set the parameter as "used" in the system, which is used
+ *			to e.g. show the parameter via the RC interface
  */
 __EXPORT param_t	param_find(const char *name);
+
+/**
+ * Look up a parameter by name.
+ *
+ * @param name		The canonical name of the parameter being looked up.
+ * @return		A handle to the parameter, or PARAM_INVALID if the parameter does not exist.
+ */
+__EXPORT param_t	param_find_no_notification(const char *name);
 
 /**
  * Return the total number of parameters.
@@ -96,6 +106,20 @@ __EXPORT param_t	param_find(const char *name);
  * @return		The number of parameters.
  */
 __EXPORT unsigned	param_count(void);
+
+/**
+ * Return the actually used number of parameters.
+ *
+ * @return		The number of parameters.
+ */
+__EXPORT unsigned	param_count_used(void);
+
+/**
+ * Wether a parameter is in use in the system.
+ *
+ * @return		True if it has been written or read
+ */
+__EXPORT bool		param_used(param_t param);
 
 /**
  * Look up a parameter by index.
@@ -106,12 +130,28 @@ __EXPORT unsigned	param_count(void);
 __EXPORT param_t	param_for_index(unsigned index);
 
 /**
+ * Look up an used parameter by index.
+ *
+ * @param param		The parameter to obtain the index for.
+ * @return		The index of the parameter in use, or -1 if the parameter does not exist.
+ */
+__EXPORT param_t	param_for_used_index(unsigned index);
+
+/**
  * Look up the index of a parameter.
  *
  * @param param		The parameter to obtain the index for.
  * @return		The index, or -1 if the parameter does not exist.
  */
 __EXPORT int		param_get_index(param_t param);
+
+/**
+ * Look up the index of an used parameter.
+ *
+ * @param param		The parameter to obtain the index for.
+ * @return		The index of the parameter in use, or -1 if the parameter does not exist.
+ */
+__EXPORT int		param_get_used_index(param_t param);
 
 /**
  * Obtain the name of a parameter.
@@ -172,6 +212,16 @@ __EXPORT int		param_get(param_t param, void *val);
 __EXPORT int		param_set(param_t param, const void *val);
 
 /**
+ * Set the value of a parameter, but do not notify the system about the change.
+ *
+ * @param param		A handle returned by param_find or passed by param_foreach.
+ * @param val		The value to set; assumed to point to a variable of the parameter type.
+ *			For structures, the pointer is assumed to point to a structure to be copied.
+ * @return		Zero if the parameter's value could be set from a scalar, nonzero otherwise.
+ */
+__EXPORT int		param_set_no_notification(param_t param, const void *val);
+
+/**
  * Reset a parameter to its default value.
  *
  * This function frees any storage used by struct parameters, and returns the parameter
@@ -199,7 +249,7 @@ __EXPORT void		param_reset_all(void);
  *							at the end to exclude parameters with a certain prefix.
  * @param num_excludes		The number of excludes provided.
  */
- __EXPORT void		param_reset_excludes(const char* excludes[], int num_excludes);
+__EXPORT void		param_reset_excludes(const char *excludes[], int num_excludes);
 
 /**
  * Export changed parameters to a file.
@@ -244,8 +294,10 @@ __EXPORT int		param_load(int fd);
  * @param arg		Argument passed to the function.
  * @param only_changed	If true, the function is only called for parameters whose values have
  *			been changed from the default.
+ * @param only_changed	If true, the function is only called for parameters which have been
+ *			used in one of the running applications.
  */
-__EXPORT void		param_foreach(void (*func)(void *arg, param_t param), void *arg, bool only_changed);
+__EXPORT void		param_foreach(void (*func)(void *arg, param_t param), void *arg, bool only_changed, bool only_used);
 
 /**
  * Set the default parameter file name.
@@ -254,16 +306,16 @@ __EXPORT void		param_foreach(void (*func)(void *arg, param_t param), void *arg, 
  *			exist.
  * @return		Zero on success.
  */
-__EXPORT int 		param_set_default_file(const char* filename);
+__EXPORT int 		param_set_default_file(const char *filename);
 
 /**
  * Get the default parameter file name.
  *
  * @return		The path to the current default parameter file; either as
- *			a result of a call to param_set_default_file, or the 
+ *			a result of a call to param_set_default_file, or the
  *			built-in default.
  */
-__EXPORT const char*	param_get_default_file(void);
+__EXPORT const char	*param_get_default_file(void);
 
 /**
  * Save parameters to the default file.
@@ -330,6 +382,7 @@ union param_value_u {
 	void		*p;
 	int32_t		i;
 	float		f;
+	long long	x;
 };
 
 /**
@@ -339,7 +392,23 @@ union param_value_u {
  * instead.
  */
 struct param_info_s {
-	const char	*name;
+	const char	*name
+
+// GCC 4.8 and higher don't implement proper alignment of static data on 
+// 64-bit. This means that the 24-byte param_info_s variables are
+// 16 byte aligned by GCC and that messes up the assumption that
+// sequential items in the __param segment can be addressed as an array.
+// The assumption is that the address of the second parameter is at
+// &param[0]+sizeof(param[0]). When compiled with clang it is
+// true, with gcc is is not true.
+// See https://llvm.org/bugs/show_bug.cgi?format=multiple&id=18006
+// The following hack is for GCC >=4.8 only. Clang works fine without
+// this.
+#ifdef __PX4_POSIX
+				__attribute__((aligned(16)));
+#else
+				;
+#endif
 	param_type_t	type;
 	union param_value_u val;
 };

@@ -46,8 +46,8 @@
 
 #define MAG_BASE_DEVICE_PATH	"/dev/mag"
 #define MAG0_DEVICE_PATH	"/dev/mag0"
-#define MAG1_DEVICE_PATH	"/dev/mag0"
-#define MAG2_DEVICE_PATH	"/dev/mag0"
+#define MAG1_DEVICE_PATH	"/dev/mag1"
+#define MAG2_DEVICE_PATH	"/dev/mag2"
 
 /**
  * mag report structure.  Reads from the device must be in multiples of this
@@ -91,7 +91,7 @@ ORB_DECLARE(sensor_mag);
  */
 
 #define _MAGIOCBASE		(0x2400)
-#define _MAGIOC(_n)		(_IOC(_MAGIOCBASE, _n))
+#define _MAGIOC(_n)		(_PX4_IOC(_MAGIOCBASE, _n))
 
 /** set the mag internal sample rate to at least (arg) Hz */
 #define MAGIOCSSAMPLERATE	_MAGIOC(0)

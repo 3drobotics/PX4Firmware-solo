@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2012-2014 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2012-2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -35,10 +35,11 @@
  * @file mavlink_messages.cpp
  * MAVLink 1.0 message formatters implementation.
  *
- * @author Lorenz Meier <lm@inf.ethz.ch>
+ * @author Lorenz Meier <lorenz@px4.io>
  * @author Anton Babushkin <anton.babushkin@me.com>
  */
 
+#include <px4_time.h>
 #include <stdio.h>
 
 #include <commander/px4_custom_mode.h>
@@ -51,7 +52,6 @@
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/home_position.h>
 #include <uORB/topics/vehicle_status.h>
-#include <uORB/topics/offboard_control_setpoint.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_vicon_position.h>
@@ -60,7 +60,6 @@
 #include <uORB/topics/position_setpoint_triplet.h>
 #include <uORB/topics/optical_flow.h>
 #include <uORB/topics/actuator_outputs.h>
-#include <uORB/topics/actuator_controls_effective.h>
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/actuator_armed.h>
 #include <uORB/topics/manual_control_setpoint.h>
@@ -69,9 +68,9 @@
 #include <uORB/topics/airspeed.h>
 #include <uORB/topics/battery_status.h>
 #include <uORB/topics/navigation_capabilities.h>
+#include <uORB/topics/distance_sensor.h>
 #include <drivers/drv_rc_input.h>
 #include <drivers/drv_pwm_output.h>
-#include <drivers/drv_range_finder.h>
 #include <systemlib/err.h>
 #include <mavlink/mavlink_log.h>
 
@@ -355,6 +354,7 @@ protected:
 		}
 	}
 
+#ifndef __PX4_QURT
 	void send(const hrt_abstime t)
 	{
 		if (!mavlink_logbuffer_is_empty(_mavlink->get_logbuffer())) {
@@ -392,7 +392,7 @@ protected:
 						char log_file_path[64] = "";
 
 						timespec ts;
-						clock_gettime(CLOCK_REALTIME, &ts);
+						px4_clock_gettime(CLOCK_REALTIME, &ts);
 						/* use GPS time for log file naming, e.g. /fs/microsd/2014-01-19/19_37_52.bin */
 						time_t gps_time_sec = ts.tv_sec + (ts.tv_nsec / 1e9);
 						struct tm tt;
@@ -411,6 +411,7 @@ protected:
 			}
 		}
 	}
+#endif
 };
 
 class MavlinkStreamCommandLong : public MavlinkStream
@@ -540,9 +541,31 @@ protected:
 			msg.errors_count2 = status.errors_count2;
 			msg.errors_count3 = status.errors_count3;
 			msg.errors_count4 = status.errors_count4;
-			msg.battery_remaining = status.battery_remaining * 100.0f;
+			msg.battery_remaining = (msg.voltage_battery > 0) ?
+							status.battery_remaining * 100.0f : -1;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_SYS_STATUS, &msg);
+
+			/* battery status message with higher resolution */
+			mavlink_battery_status_t bat_msg;
+			bat_msg.id = 0;
+			bat_msg.battery_function = MAV_BATTERY_FUNCTION_ALL;
+			bat_msg.type = MAV_BATTERY_TYPE_LIPO;
+			bat_msg.temperature = INT16_MAX;
+			for (unsigned i = 0; i < (sizeof(bat_msg.voltages) / sizeof(bat_msg.voltages[0])); i++) {
+				if (i < status.battery_cell_count) {
+					bat_msg.voltages[i] = (status.battery_voltage / status.battery_cell_count) * 1000.0f;
+				} else {
+					bat_msg.voltages[i] = 0;
+				}
+			}
+			bat_msg.current_battery = status.battery_current * 100.0f;
+			bat_msg.current_consumed = status.battery_discharged_mah;
+			bat_msg.energy_consumed = -1.0f;
+			bat_msg.battery_remaining = (status.battery_voltage > 0) ?
+							status.battery_remaining * 100.0f : -1;
+
+			_mavlink->send_message(MAVLINK_MSG_ID_BATTERY_STATUS, &bat_msg);
 		}
 	}
 };
@@ -976,7 +999,7 @@ protected:
 		mavlink_system_time_t msg;
 		timespec tv;
 
-		clock_gettime(CLOCK_REALTIME, &tv);
+		px4_clock_gettime(CLOCK_REALTIME, &tv);
 
 		msg.time_boot_ms = hrt_absolute_time() / 1000;
 		msg.time_unix_usec = (uint64_t)tv.tv_sec * 1000000 + tv.tv_nsec / 1000;
@@ -1364,6 +1387,99 @@ protected:
 			msg.servo8_raw = act.output[7];
 
 			_mavlink->send_message(MAVLINK_MSG_ID_SERVO_OUTPUT_RAW, &msg);
+		}
+	}
+};
+
+template <int N>
+class MavlinkStreamActuatorControlTarget : public MavlinkStream
+{
+public:
+	const char *get_name() const
+	{
+		return MavlinkStreamActuatorControlTarget<N>::get_name_static();
+	}
+
+	static const char *get_name_static()
+	{
+		switch (N) {
+			case 0:
+			return "ACTUATOR_CONTROL_TARGET0";
+
+			case 1:
+			return "ACTUATOR_CONTROL_TARGET1";
+
+			case 2:
+			return "ACTUATOR_CONTROL_TARGET2";
+
+			case 3:
+			return "ACTUATOR_CONTROL_TARGET3";
+		}
+	}
+
+	uint8_t get_id()
+	{
+		return MAVLINK_MSG_ID_ACTUATOR_CONTROL_TARGET;
+	}
+
+	static MavlinkStream *new_instance(Mavlink *mavlink)
+	{
+		return new MavlinkStreamActuatorControlTarget<N>(mavlink);
+	}
+
+	unsigned get_size()
+	{
+		return _att_ctrl_sub->is_published() ? (MAVLINK_MSG_ID_ACTUATOR_CONTROL_TARGET_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
+	}
+
+private:
+	MavlinkOrbSubscription *_att_ctrl_sub;
+	uint64_t _att_ctrl_time;
+
+	/* do not allow top copying this class */
+	MavlinkStreamActuatorControlTarget(MavlinkStreamActuatorControlTarget &);
+	MavlinkStreamActuatorControlTarget& operator = (const MavlinkStreamActuatorControlTarget &);
+
+protected:
+	explicit MavlinkStreamActuatorControlTarget(Mavlink *mavlink) : MavlinkStream(mavlink),
+		_att_ctrl_sub(nullptr),
+		_att_ctrl_time(0)
+	{
+		// XXX this can be removed once the multiplatform system remaps topics
+		switch (N) {
+			case 0:
+			_att_ctrl_sub = _mavlink->add_orb_subscription(ORB_ID(actuator_controls_0));
+			break;
+
+			case 1:
+			_att_ctrl_sub = _mavlink->add_orb_subscription(ORB_ID(actuator_controls_1));
+			break;
+
+			case 2:
+			_att_ctrl_sub = _mavlink->add_orb_subscription(ORB_ID(actuator_controls_2));
+			break;
+
+			case 3:
+			_att_ctrl_sub = _mavlink->add_orb_subscription(ORB_ID(actuator_controls_3));
+			break;
+		}
+	}
+
+	void send(const hrt_abstime t)
+	{
+		struct actuator_controls_s att_ctrl;
+
+		if (_att_ctrl_sub->update(&_att_ctrl_time, &att_ctrl)) {
+			mavlink_actuator_control_target_t msg;
+
+			msg.time_usec = att_ctrl.timestamp;
+			msg.group_mlx = N;
+
+			for (unsigned i = 0; i < sizeof(msg.controls) / sizeof(msg.controls[0]); i++) {
+				msg.controls[i] = att_ctrl.control[i];
+			}
+
+			_mavlink->send_message(MAVLINK_MSG_ID_ACTUATOR_CONTROL_TARGET, &msg);
 		}
 	}
 };
@@ -1775,29 +1891,8 @@ protected:
 		struct rc_input_values rc;
 
 		if (_rc_sub->update(&_rc_time, &rc)) {
-			const unsigned port_width = 8;
 
-			/* deprecated message (but still needed for compatibility!) */
-			for (unsigned i = 0; (i * port_width) < rc.channel_count; i++) {
-				/* channels are sent in MAVLink main loop at a fixed interval */
-				mavlink_rc_channels_raw_t msg;
-
-				msg.time_boot_ms = rc.timestamp_publication / 1000;
-				msg.port = i;
-				msg.chan1_raw = (rc.channel_count > (i * port_width) + 0) ? rc.values[(i * port_width) + 0] : UINT16_MAX;
-				msg.chan2_raw = (rc.channel_count > (i * port_width) + 1) ? rc.values[(i * port_width) + 1] : UINT16_MAX;
-				msg.chan3_raw = (rc.channel_count > (i * port_width) + 2) ? rc.values[(i * port_width) + 2] : UINT16_MAX;
-				msg.chan4_raw = (rc.channel_count > (i * port_width) + 3) ? rc.values[(i * port_width) + 3] : UINT16_MAX;
-				msg.chan5_raw = (rc.channel_count > (i * port_width) + 4) ? rc.values[(i * port_width) + 4] : UINT16_MAX;
-				msg.chan6_raw = (rc.channel_count > (i * port_width) + 5) ? rc.values[(i * port_width) + 5] : UINT16_MAX;
-				msg.chan7_raw = (rc.channel_count > (i * port_width) + 6) ? rc.values[(i * port_width) + 6] : UINT16_MAX;
-				msg.chan8_raw = (rc.channel_count > (i * port_width) + 7) ? rc.values[(i * port_width) + 7] : UINT16_MAX;
-				msg.rssi = rc.rssi;
-
-				_mavlink->send_message(MAVLINK_MSG_ID_RC_CHANNELS_RAW, &msg);
-			}
-
-			/* new message */
+			/* send RC channel data and RSSI */
 			mavlink_rc_channels_t msg;
 
 			msg.time_boot_ms = rc.timestamp_publication / 1000;
@@ -1821,55 +1916,7 @@ protected:
 			msg.chan17_raw = (rc.channel_count > 16) ? rc.values[16] : UINT16_MAX;
 			msg.chan18_raw = (rc.channel_count > 17) ? rc.values[17] : UINT16_MAX;
 
-			/* RSSI has a max value of 100, and when Spektrum or S.BUS are
-			 * available, the RSSI field is invalid, as they do not provide
-			 * an RSSI measurement. Use an out of band magic value to signal
-			 * these digital ports. XXX revise MAVLink spec to address this.
-			 * One option would be to use the top bit to toggle between RSSI
-			 * and input source mode.
-			 *
-			 * Full RSSI field: 0b 1 111 1111
-			 *
-			 *                     ^ If bit is set, RSSI encodes type + RSSI
-			 *
-			 *                       ^ These three bits encode a total of 8
-			 *                         digital RC input types.
-			 *                         0: PPM, 1: SBUS, 2: Spektrum, 2: ST24
-			 *                           ^ These four bits encode a total of
-			 *                             16 RSSI levels. 15 = full, 0 = no signal
-			 *
-			 */
-
-			/* Initialize RSSI with the special mode level flag */
-			msg.rssi = (1 << 7);
-
-			/* Set RSSI */
-			msg.rssi |= (rc.rssi <= 100) ? ((rc.rssi / 7) + 1) : 15;
-
-			switch (rc.input_source) {
-				case RC_INPUT_SOURCE_PX4FMU_PPM:
-				/* fallthrough */
-				case RC_INPUT_SOURCE_PX4IO_PPM:
-					msg.rssi |= (0 << 4);
-					break;
-				case RC_INPUT_SOURCE_PX4IO_SPEKTRUM:
-					msg.rssi |= (1 << 4);
-					break;
-				case RC_INPUT_SOURCE_PX4IO_SBUS:
-					msg.rssi |= (2 << 4);
-					break;
-				case RC_INPUT_SOURCE_PX4IO_ST24:
-					msg.rssi |= (3 << 4);
-					break;
-				case RC_INPUT_SOURCE_UNKNOWN:
-					// do nothing
-					break;
-			}
-
-			if (rc.rc_lost) {
-				/* RSSI is by definition zero */
-				msg.rssi = 0;
-			}
+			msg.rssi = rc.rssi;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_RC_CHANNELS, &msg);
 		}
@@ -2006,82 +2053,6 @@ protected:
 	}
 };
 
-class MavlinkStreamAttitudeControls : public MavlinkStream
-{
-public:
-	const char *get_name() const
-	{
-		return MavlinkStreamAttitudeControls::get_name_static();
-	}
-
-	static const char *get_name_static()
-	{
-		return "ATTITUDE_CONTROLS";
-	}
-
-	uint8_t get_id()
-	{
-		return 0;
-	}
-
-	static MavlinkStream *new_instance(Mavlink *mavlink)
-	{
-		return new MavlinkStreamAttitudeControls(mavlink);
-	}
-
-	unsigned get_size()
-	{
-		return 4 * (MAVLINK_MSG_ID_NAMED_VALUE_FLOAT_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES);
-	}
-
-private:
-	MavlinkOrbSubscription *_att_ctrl_sub;
-	uint64_t _att_ctrl_time;
-
-	/* do not allow top copying this class */
-	MavlinkStreamAttitudeControls(MavlinkStreamAttitudeControls &);
-	MavlinkStreamAttitudeControls& operator = (const MavlinkStreamAttitudeControls &);
-
-protected:
-	explicit MavlinkStreamAttitudeControls(Mavlink *mavlink) : MavlinkStream(mavlink),
-		_att_ctrl_sub(_mavlink->add_orb_subscription(ORB_ID_VEHICLE_ATTITUDE_CONTROLS)),
-		_att_ctrl_time(0)
-	{}
-
-	void send(const hrt_abstime t)
-	{
-		struct actuator_controls_s att_ctrl;
-
-		if (_att_ctrl_sub->update(&_att_ctrl_time, &att_ctrl)) {
-			/* send, add spaces so that string buffer is at least 10 chars long */
-			mavlink_named_value_float_t msg;
-
-			msg.time_boot_ms = att_ctrl.timestamp / 1000;
-
-			snprintf(msg.name, sizeof(msg.name), "rll ctrl");
-			msg.value = att_ctrl.control[0];
-
-			_mavlink->send_message(MAVLINK_MSG_ID_NAMED_VALUE_FLOAT, &msg);
-
-			snprintf(msg.name, sizeof(msg.name), "ptch ctrl");
-			msg.value = att_ctrl.control[1];
-
-			_mavlink->send_message(MAVLINK_MSG_ID_NAMED_VALUE_FLOAT, &msg);
-
-			snprintf(msg.name, sizeof(msg.name), "yaw ctrl");
-			msg.value = att_ctrl.control[2];
-
-			_mavlink->send_message(MAVLINK_MSG_ID_NAMED_VALUE_FLOAT, &msg);
-
-			snprintf(msg.name, sizeof(msg.name), "thr ctrl");
-			msg.value = att_ctrl.control[3];
-
-			_mavlink->send_message(MAVLINK_MSG_ID_NAMED_VALUE_FLOAT, &msg);
-		}
-	}
-};
-
-
 class MavlinkStreamNamedValueFloat : public MavlinkStream
 {
 public:
@@ -2207,7 +2178,6 @@ protected:
 	}
 };
 
-
 class MavlinkStreamDistanceSensor : public MavlinkStream
 {
 public:
@@ -2233,12 +2203,12 @@ public:
 
 	unsigned get_size()
 	{
-		return _range_sub->is_published() ? (MAVLINK_MSG_ID_DISTANCE_SENSOR_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
+		return _distance_sensor_sub->is_published() ? (MAVLINK_MSG_ID_DISTANCE_SENSOR_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
 	}
 
 private:
-	MavlinkOrbSubscription *_range_sub;
-	uint64_t _range_time;
+	MavlinkOrbSubscription *_distance_sensor_sub;
+	uint64_t _dist_sensor_time;
 
 	/* do not allow top copying this class */
 	MavlinkStreamDistanceSensor(MavlinkStreamDistanceSensor &);
@@ -2246,23 +2216,34 @@ private:
 
 protected:
 	explicit MavlinkStreamDistanceSensor(Mavlink *mavlink) : MavlinkStream(mavlink),
-		_range_sub(_mavlink->add_orb_subscription(ORB_ID(sensor_range_finder))),
-		_range_time(0)
+		_distance_sensor_sub(_mavlink->add_orb_subscription(ORB_ID(distance_sensor))),
+		_dist_sensor_time(0)
 	{}
 
 	void send(const hrt_abstime t)
 	{
-		struct range_finder_report range;
+		struct distance_sensor_s dist_sensor;
 
-		if (_range_sub->update(&_range_time, &range)) {
+		if (_distance_sensor_sub->update(&_dist_sensor_time, &dist_sensor)) {
 
 			mavlink_distance_sensor_t msg;
 
-			msg.time_boot_ms = range.timestamp / 1000;
+			msg.time_boot_ms = dist_sensor.timestamp / 1000; /* us to ms */
 
-			switch (range.type) {
-			case RANGE_FINDER_TYPE_LASER:
+			/* TODO: use correct ID here */
+			msg.id = 0;
+
+			switch (dist_sensor.type) {
+			case MAV_DISTANCE_SENSOR_ULTRASOUND:
+				msg.type = MAV_DISTANCE_SENSOR_ULTRASOUND;
+				break;
+
+			case MAV_DISTANCE_SENSOR_LASER:
 				msg.type = MAV_DISTANCE_SENSOR_LASER;
+				break;
+
+			case MAV_DISTANCE_SENSOR_INFRARED:
+				msg.type = MAV_DISTANCE_SENSOR_INFRARED;
 				break;
 
 			default:
@@ -2270,12 +2251,11 @@ protected:
 				break;
 			}
 
-			msg.id = 0;
-			msg.orientation = 0;
-			msg.min_distance = range.minimum_distance * 100;
-			msg.max_distance = range.maximum_distance * 100;
-			msg.current_distance = range.distance * 100;
-			msg.covariance = 20;
+			msg.orientation = dist_sensor.orientation;
+			msg.min_distance = dist_sensor.min_distance * 100.0f; /* m to cm */
+			msg.max_distance = dist_sensor.max_distance * 100.0f; /* m to cm */
+			msg.current_distance = dist_sensor.current_distance * 100.0f; /* m to cm */
+			msg.covariance = dist_sensor.covariance;
 
 			_mavlink->send_message(MAVLINK_MSG_ID_DISTANCE_SENSOR, &msg);
 		}
@@ -2283,7 +2263,7 @@ protected:
 };
 
 
-StreamListItem *streams_list[] = {
+const StreamListItem *streams_list[] = {
 	new StreamListItem(&MavlinkStreamHeartbeat::new_instance, &MavlinkStreamHeartbeat::get_name_static),
 	new StreamListItem(&MavlinkStreamStatustext::new_instance, &MavlinkStreamStatustext::get_name_static),
 	new StreamListItem(&MavlinkStreamCommandLong::new_instance, &MavlinkStreamCommandLong::get_name_static),
@@ -2310,7 +2290,10 @@ StreamListItem *streams_list[] = {
 	new StreamListItem(&MavlinkStreamRCChannelsRaw::new_instance, &MavlinkStreamRCChannelsRaw::get_name_static),
 	new StreamListItem(&MavlinkStreamManualControl::new_instance, &MavlinkStreamManualControl::get_name_static),
 	new StreamListItem(&MavlinkStreamOpticalFlowRad::new_instance, &MavlinkStreamOpticalFlowRad::get_name_static),
-	new StreamListItem(&MavlinkStreamAttitudeControls::new_instance, &MavlinkStreamAttitudeControls::get_name_static),
+	new StreamListItem(&MavlinkStreamActuatorControlTarget<0>::new_instance, &MavlinkStreamActuatorControlTarget<0>::get_name_static),
+	new StreamListItem(&MavlinkStreamActuatorControlTarget<1>::new_instance, &MavlinkStreamActuatorControlTarget<1>::get_name_static),
+	new StreamListItem(&MavlinkStreamActuatorControlTarget<2>::new_instance, &MavlinkStreamActuatorControlTarget<2>::get_name_static),
+	new StreamListItem(&MavlinkStreamActuatorControlTarget<3>::new_instance, &MavlinkStreamActuatorControlTarget<3>::get_name_static),
 	new StreamListItem(&MavlinkStreamNamedValueFloat::new_instance, &MavlinkStreamNamedValueFloat::get_name_static),
 	new StreamListItem(&MavlinkStreamCameraCapture::new_instance, &MavlinkStreamCameraCapture::get_name_static),
 	new StreamListItem(&MavlinkStreamDistanceSensor::new_instance, &MavlinkStreamDistanceSensor::get_name_static),

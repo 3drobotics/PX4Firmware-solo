@@ -37,7 +37,7 @@
  * Tool similar to UNIX reboot command
  */
 
-#include <nuttx/config.h>
+#include <px4_config.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <getopt.h>
@@ -57,14 +57,15 @@ int reboot_main(int argc, char *argv[])
 		case 'b':
 			to_bootloader = true;
 			break;
+
 		default:
 			errx(1, "usage: reboot [-b]\n"
-				"   -b   reboot into the bootloader");
+			     "   -b   reboot into the bootloader");
 
 		}
 	}
 
-	systemreset(to_bootloader);
+	px4_systemreset(to_bootloader);
 }
 
 
