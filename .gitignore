@@ -46,3 +46,4 @@ Firmware.zip
 unittests/build
 *.generated.h
 .vagrant
+makefiles/config_px4fmu-v2_APM.mk
