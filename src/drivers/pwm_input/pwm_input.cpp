@@ -80,6 +80,8 @@
 #include <drivers/device/device.h>
 #include <drivers/device/ringbuffer.h>
 
+#include <systemlib/perf_counter.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -254,6 +256,10 @@ private:
 	hrt_call _hard_reset_call;	/* HRT callout for note completion */
 	hrt_call _freeze_test_call;	/* HRT callout for note completion */
 
+	perf_counter_t _perf_reset;
+	perf_counter_t _perf_interrupt;
+	perf_counter_t _perf_read;
+
 	void _timer_init(void);
 
 	void _turn_on();
@@ -277,7 +283,10 @@ PWMIN::PWMIN() :
 	_last_period(0),
 	_last_width(0),
 	_reports(nullptr),
-	_timer_started(false)
+	_timer_started(false),
+	_perf_reset(perf_alloc(PC_COUNT, "pwm_input_reset")),
+	_perf_read(perf_alloc(PC_ELAPSED, "pwm_input_read")),
+	_perf_interrupt(perf_alloc(PC_ELAPSED, "pwm_input_interrupt"))
 {
 }
 
@@ -286,6 +295,9 @@ PWMIN::~PWMIN()
 	if (_reports != nullptr) {
 		delete _reports;
 	}
+	perf_free(_perf_reset);
+	perf_free(_perf_read);
+	perf_free(_perf_interrupt);
 }
 
 /*
@@ -368,6 +380,8 @@ void PWMIN::_timer_init(void)
 	irqrestore(flags);
 
 	_timer_started = true;
+
+	perf_count(_perf_reset);
 }
 
 void
@@ -375,7 +389,6 @@ PWMIN::_freeze_test()
 {
 	/* reset if last poll time was way back and a read was recently requested */
 	if (hrt_elapsed_time(&_last_poll_time) > TIMEOUT_POLL && hrt_elapsed_time(&_last_read_time) < TIMEOUT_READ) {
-		warnx("Lidar is down, reseting");
 		hard_reset();
 	}
 }
@@ -470,6 +483,8 @@ PWMIN::ioctl(struct file *filp, int cmd, unsigned long arg)
 ssize_t
 PWMIN::read(struct file *filp, char *buffer, size_t buflen)
 {
+	perf_begin(_perf_read);
+
 	_last_read_time = hrt_absolute_time();
 
 	unsigned count = buflen / sizeof(struct pwm_input_s);
@@ -478,6 +493,7 @@ PWMIN::read(struct file *filp, char *buffer, size_t buflen)
 
 	/* buffer must be large enough */
 	if (count < 1) {
+		perf_end(_perf_read);
 		return -ENOSPC;
 	}
 
@@ -487,6 +503,9 @@ PWMIN::read(struct file *filp, char *buffer, size_t buflen)
 			buf++;
 		}
 	}
+
+	perf_end(_perf_read);
+
 	/* if there was no data, warn the caller */
 	return ret ? ret : -EAGAIN;
 }
@@ -496,6 +515,8 @@ PWMIN::read(struct file *filp, char *buffer, size_t buflen)
  */
 void PWMIN::publish(uint16_t status, uint32_t period, uint32_t pulse_width)
 {
+	perf_count(_perf_interrupt);
+
 	/* if we missed an edge, we have to give up */
 	if (status & SR_OVF_PWMIN) {
 		_error_count++;
@@ -526,6 +547,9 @@ void PWMIN::print_info(void)
 		       (unsigned)_pulses_captured,
 		       (unsigned)_last_period,
 		       (unsigned)_last_width);
+		perf_print_counter(_perf_interrupt);
+		perf_print_counter(_perf_read);
+		perf_print_counter(_perf_reset);
 	}
 }
 
