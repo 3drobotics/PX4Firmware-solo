@@ -1140,10 +1140,10 @@ calibrate(unsigned altitude, enum MS5611_BUS busid)
 void
 usage()
 {
-	warnx("missing command: try 'start', 'info', 'test', 'test2', 'reset', 'calibrate'");
+	warnx("missing command: try 'start', 'info', 'test', 'reset', 'calibrate'");
 	warnx("options:");
 	warnx("    -X    (external I2C bus)");
-	warnx("    -I    (intternal I2C bus)");
+	warnx("    -I    (internal I2C bus)");
 	warnx("    -S    (external SPI bus)");
 	warnx("    -s    (internal SPI bus)");
 }
@@ -1215,5 +1215,6 @@ ms5611_main(int argc, char *argv[])
 		ms5611::calibrate(altitude, busid);
 	}
 
-	errx(1, "unrecognised command, try 'start', 'test', 'reset' or 'info'");
+	ms5611::usage();
+	errx(1, "unrecognised command");
 }
