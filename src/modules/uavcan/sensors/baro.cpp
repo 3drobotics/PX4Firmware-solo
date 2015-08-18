@@ -41,30 +41,44 @@
 
 const char *const UavcanBarometerBridge::NAME = "baro";
 
-UavcanBarometerBridge::UavcanBarometerBridge(uavcan::INode& node) :
-UavcanCDevSensorBridgeBase("uavcan_baro", "/dev/uavcan/baro", BARO_BASE_DEVICE_PATH, ORB_ID(sensor_baro)),
-_sub_air_data(node),
-_reports(nullptr)
+UavcanBarometerBridge::UavcanBarometerBridge(uavcan::INode &node) :
+	UavcanCDevSensorBridgeBase("uavcan_baro", "/dev/uavcan/baro", BARO_BASE_DEVICE_PATH, ORB_ID(sensor_baro)),
+	_sub_air_pressure_data(node),
+	_sub_air_temperature_data(node),
+	_reports(nullptr)
 {
+	last_temperature = 0.0f;
 }
 
 int UavcanBarometerBridge::init()
 {
 	int res = device::CDev::init();
+
 	if (res < 0) {
 		return res;
 	}
 
 	/* allocate basic report buffers */
 	_reports = new RingBuffer(2, sizeof(baro_report));
-	if (_reports == nullptr)
-		return -1;
 
-	res = _sub_air_data.start(AirDataCbBinder(this, &UavcanBarometerBridge::air_data_sub_cb));
+	if (_reports == nullptr) {
+		return -1;
+	}
+
+	res = _sub_air_pressure_data.start(AirPressureCbBinder(this, &UavcanBarometerBridge::air_pressure_sub_cb));
+
 	if (res < 0) {
 		log("failed to start uavcan sub: %d", res);
 		return res;
 	}
+
+	res = _sub_air_temperature_data.start(AirTemperatureCbBinder(this, &UavcanBarometerBridge::air_temperature_sub_cb));
+
+	if (res < 0) {
+		log("failed to start uavcan sub: %d", res);
+		return res;
+	}
+
 	return 0;
 }
 
@@ -75,8 +89,9 @@ ssize_t UavcanBarometerBridge::read(struct file *filp, char *buffer, size_t bufl
 	int ret = 0;
 
 	/* buffer must be large enough */
-	if (count < 1)
+	if (count < 1) {
 		return -ENOSPC;
+	}
 
 	while (count--) {
 		if (_reports->get(baro_buf)) {
@@ -93,47 +108,62 @@ int UavcanBarometerBridge::ioctl(struct file *filp, int cmd, unsigned long arg)
 {
 	switch (cmd) {
 	case BAROIOCSMSLPRESSURE: {
-		if ((arg < 80000) || (arg > 120000)) {
-			return -EINVAL;
-		} else {
-			log("new msl pressure %u", _msl_pressure);
-			_msl_pressure = arg;
+			if ((arg < 80000) || (arg > 120000)) {
+				return -EINVAL;
+
+			} else {
+				log("new msl pressure %u", _msl_pressure);
+				_msl_pressure = arg;
+				return OK;
+			}
+		}
+
+	case BAROIOCGMSLPRESSURE: {
+			return _msl_pressure;
+		}
+
+	case SENSORIOCSPOLLRATE: {
+			// not supported yet, pretend that everything is ok
 			return OK;
 		}
-	}
-	case BAROIOCGMSLPRESSURE: {
-		return _msl_pressure;
-	}
-	case SENSORIOCSPOLLRATE: {
-		// not supported yet, pretend that everything is ok
-		return OK;
-	}
+
 	case SENSORIOCSQUEUEDEPTH: {
-		/* lower bound is mandatory, upper bound is a sanity check */
-		if ((arg < 1) || (arg > 100))
-			return -EINVAL;
+			/* lower bound is mandatory, upper bound is a sanity check */
+			if ((arg < 1) || (arg > 100)) {
+				return -EINVAL;
+			}
 
-		irqstate_t flags = irqsave();
-		if (!_reports->resize(arg)) {
+			irqstate_t flags = irqsave();
+
+			if (!_reports->resize(arg)) {
+				irqrestore(flags);
+				return -ENOMEM;
+			}
+
 			irqrestore(flags);
-			return -ENOMEM;
-		}
-		irqrestore(flags);
 
-		return OK;
-	}
+			return OK;
+		}
+
 	default: {
-		return CDev::ioctl(filp, cmd, arg);
-	}
+			return CDev::ioctl(filp, cmd, arg);
+		}
 	}
 }
 
-void UavcanBarometerBridge::air_data_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::air_data::StaticAirData> &msg)
+void UavcanBarometerBridge::air_temperature_sub_cb(const
+		uavcan::ReceivedDataStructure<uavcan::equipment::air_data::StaticTemperature> &msg)
+{
+	last_temperature = msg.static_temperature;
+}
+
+void UavcanBarometerBridge::air_pressure_sub_cb(const
+		uavcan::ReceivedDataStructure<uavcan::equipment::air_data::StaticPressure> &msg)
 {
 	baro_report report;
-	
+
 	report.timestamp   = msg.getMonotonicTimestamp().toUSec();
-	report.temperature = msg.static_temperature;
+	report.temperature = last_temperature;
 	report.pressure    = msg.static_pressure / 100.0F;  // Convert to millibar
 	report.error_count = 0;
 
@@ -141,15 +171,15 @@ void UavcanBarometerBridge::air_data_sub_cb(const uavcan::ReceivedDataStructure<
 	 * Altitude computation
 	 * Refer to the MS5611 driver for details
 	 */
-	const float T1 = 15.0f + 273.15f; // temperature at base height in Kelvin
-	const float a  = -6.5f / 1000;   // temperature gradient in degrees per metre
-	const float g  = 9.80665f;       // gravity constant in m/s/s
-	const float R  = 287.05f;        // ideal gas constant in J/kg/K
+	const double T1 = 15.0 + 273.15; // temperature at base height in Kelvin
+	const double a  = -6.5 / 1000;   // temperature gradient in degrees per metre
+	const double g  = 9.80665;       // gravity constant in m/s/s
+	const double R  = 287.05;        // ideal gas constant in J/kg/K
 
-	const float p1 = _msl_pressure / 1000.0f;      // current pressure at MSL in kPa
-	const float p = msg.static_pressure / 1000.0f; // measured pressure in kPa
+	const double p1 = _msl_pressure / 1000.0;      // current pressure at MSL in kPa
+	const double p = double(msg.static_pressure) / 1000.0; // measured pressure in kPa
 
-	report.altitude = (((std::powf((p / p1), (-(a * R) / g))) * T1) - T1) / a;
+	report.altitude = (((std::pow((p / p1), (-(a * R) / g))) * T1) - T1) / a;
 
 	// add to the ring buffer
 	_reports->force(&report);
