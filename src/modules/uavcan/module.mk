@@ -54,6 +54,8 @@ SRCS += actuators/esc.cpp
 SRCS += sensors/sensor_bridge.cpp   \
         sensors/gnss.cpp            \
         sensors/mag.cpp             \
+        sensors/flow.cpp            \
+        sensors/range.cpp           \
         sensors/baro.cpp
 
 #
@@ -90,5 +92,5 @@ INCLUDE_DIRS += $(LIBUAVCAN_POSIX_INC)
 #
 # Invoke DSDL compiler
 #
-$(info $(shell $(LIBUAVCAN_DSDLC) $(UAVCAN_DSDL_DIR)))
+$(info $(shell $(LIBUAVCAN_DSDLC) $(UAVCAN_DSDL_DIR) $(PX4_MODULE_SRC)/modules/uavcan/dsdl/uavcan/threedr))
 INCLUDE_DIRS += dsdlc_generated

@@ -77,7 +77,7 @@ class UavcanNode : public device::CDev
 
 	static constexpr unsigned PollTimeoutMs      = 10;
 
-	static constexpr unsigned MemPoolSize = 64 * uavcan::MemPoolBlockSize;
+	static constexpr unsigned MemPoolSize = 128 * uavcan::MemPoolBlockSize;
 	/*
 	 * This memory is reserved for uavcan to use for queuing CAN frames.
 	 * At 1Mbit there is approximately one CAN frame every 145 uS.
