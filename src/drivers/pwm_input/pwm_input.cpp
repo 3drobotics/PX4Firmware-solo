@@ -86,9 +86,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-/* Reset pin define */
-#define GPIO_VDD_RANGEFINDER_EN GPIO_GPIO5_OUTPUT
-
 #if HRT_TIMER == PWMIN_TIMER
 #error cannot share timer between HRT and PWMIN
 #endif
@@ -241,7 +238,6 @@ public:
 
 	void publish(uint16_t status, uint32_t period, uint32_t pulse_width);
 	void print_info(void);
-	void hard_reset();
 
 private:
 	uint32_t _error_count;
@@ -253,19 +249,11 @@ private:
 	ringbuffer::RingBuffer *_reports;
 	bool _timer_started;
 
-	hrt_call _hard_reset_call;	/* HRT callout for note completion */
-	hrt_call _freeze_test_call;	/* HRT callout for note completion */
-
 	perf_counter_t _perf_reset;
 	perf_counter_t _perf_interrupt;
 	perf_counter_t _perf_read;
 
 	void _timer_init(void);
-
-	void _turn_on();
-	void _turn_off();
-	void _freeze_test();
-
 };
 
 static int pwmin_tim_isr(int irq, void *context);
@@ -317,9 +305,6 @@ PWMIN::init()
 	if (_reports == nullptr) {
 		return -ENOMEM;
 	}
-
-	/* Schedule freeze check to invoke periodically */
-	hrt_call_every(&_freeze_test_call, 0, TIMEOUT_POLL, reinterpret_cast<hrt_callout>(&PWMIN::_freeze_test), this);
 
 	return OK;
 }
@@ -384,34 +369,6 @@ void PWMIN::_timer_init(void)
 	perf_count(_perf_reset);
 }
 
-void
-PWMIN::_freeze_test()
-{
-	/* reset if last poll time was way back and a read was recently requested */
-	if (hrt_elapsed_time(&_last_poll_time) > TIMEOUT_POLL && hrt_elapsed_time(&_last_read_time) < TIMEOUT_READ) {
-		hard_reset();
-	}
-}
-
-void
-PWMIN::_turn_on()
-{
-	stm32_gpiowrite(GPIO_VDD_RANGEFINDER_EN, 1);
-}
-
-void
-PWMIN::_turn_off()
-{
-	stm32_gpiowrite(GPIO_VDD_RANGEFINDER_EN, 0);
-}
-
-void
-PWMIN::hard_reset()
-{
-	_turn_off();
-	hrt_call_after(&_hard_reset_call, 9000, reinterpret_cast<hrt_callout>(&PWMIN::_turn_on), this);
-}
-
 /*
  * hook for open of the driver. We start the timer at this point, then
  * leave it running
@@ -466,8 +423,6 @@ PWMIN::ioctl(struct file *filp, int cmd, unsigned long arg)
 		 * be needed if the pin was used for a different
 		 * purpose (such as PWM output) */
 		_timer_init();
-		/* also reset the sensor */
-		hard_reset();
 		return OK;
 
 	default:
@@ -630,7 +585,6 @@ static void pwmin_test(void)
  */
 static void pwmin_reset(void)
 {
-	g_dev->hard_reset();
 	int fd = open(PWMIN0_DEVICE_PATH, O_RDONLY);
 
 	if (fd == -1) {
