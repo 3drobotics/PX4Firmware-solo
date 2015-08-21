@@ -74,6 +74,9 @@ LidarLiteI2C::LidarLiteI2C(int bus, const char *path, int address) :
 	_pause_measurements(false),
 	_hw_version(0),
 	_sw_version(0),
+	_v2_hardware(false),
+	_reset_complete(false),
+	_same_value_counter(0),
 	_bus(bus)
 {
 	// up the retries since the device misses the first measure attempts
@@ -201,8 +204,11 @@ int LidarLiteI2C::probe()
 	return -EIO;
 
 ok:
+	// "blue label" V2 lidars have hw version 0x15
+	_v2_hardware = (_hw_version >= 0x15);
 	_retries = 3;
-	return reset_sensor();
+	_reset_complete = false;
+	return OK;
 }
 
 int LidarLiteI2C::ioctl(struct file *filp, int cmd, unsigned long arg)
@@ -302,6 +308,13 @@ ssize_t LidarLiteI2C::read(struct file *filp, char *buffer, size_t buflen)
 
 int LidarLiteI2C::measure()
 {
+	if (_v2_hardware) {
+		// we use continuous mode for V2 hardware so there is
+		// no measure() phase. Experiments show that
+		// non-continuous mode is not reliable, often gives
+		// false values for distance
+		return OK;
+	}
 	int ret;
 
 	if (_pause_measurements) {
@@ -312,10 +325,19 @@ int LidarLiteI2C::measure()
 	}
 
 	/*
+	  see if the reset of the sensor is complete. If it isn't
+	  complete yet then don't do the measure() cycle this time.
+	 */
+	if (! _reset_complete) {
+		ret = reset_sensor();
+		if (ret != OK)
+			return ret;
+	}
+
+	/*
 	 * Send the command to begin a measurement.
 	 */
-	const uint8_t cmd[2] = { LL40LS_MEASURE_REG, LL40LS_MSRREG_ACQUIRE };
-	ret = lidar_transfer(cmd, sizeof(cmd), nullptr, 0);
+	ret = write_reg(LL40LS_MEASURE_REG, LL40LS_MSRREG_ACQUIRE);
 
 	if (OK != ret) {
 		perf_count(_comms_errors);
@@ -324,8 +346,7 @@ int LidarLiteI2C::measure()
 		// if we are getting lots of I2C transfer errors try
 		// resetting the sensor
 		if (perf_event_count(_comms_errors) % 10 == 0) {
-			perf_count(_sensor_resets);
-			reset_sensor();
+			_reset_complete = false;
 		}
 
 		return ret;
@@ -340,17 +361,76 @@ int LidarLiteI2C::measure()
 }
 
 /*
-  reset the sensor to power on defaults
+  a table of settings for a lidar
+ */
+struct settings_table {
+	uint8_t reg;
+	uint8_t value;
+};
+
+/*
+  register setup table for V1 Lidar
+ */
+static const struct settings_table settings_v1[] = {
+	{ LL40LS_MEASURE_REG, LL40LS_MSRREG_RESET },
+};
+
+/*
+  register setup table for V2 Lidar
+ */
+static const struct settings_table settings_v2[] = {
+	{ LL40LS_INTERVAL, 0x28 }, // 0x28 == 50Hz
+	{ LL40LS_COUNT, LL40LS_COUNT_CONTINUOUS },
+	{ LL40LS_MEASURE_REG, LL40LS_MSRREG_ACQUIRE },
+};
+
+/*
+  reset the sensor to required settings. This is done by incrementally
+  setting all register values according to the hw version. It may take
+  multiple tries to get the sensor fully reset, as the sensor may not
+  respond immediately
  */
 int LidarLiteI2C::reset_sensor()
 {
-	int ret = write_reg(LL40LS_MEASURE_REG, LL40LS_MSRREG_RESET);
-	if (ret != OK)
-		return ret;
+	perf_count(_sensor_resets);
 
-	// wait for sensor reset to complete
-	usleep(1000);
+	// force _reset_complete here so when called via the ioctl it
+	// will keep trying the reset
+	_reset_complete = false;
 
+	const struct settings_table *table;
+	uint8_t num_settings;
+	if (_v2_hardware) {
+		table = settings_v2;
+		num_settings = sizeof(settings_v2)/sizeof(settings_table);
+	} else {
+		table = settings_v1;
+		num_settings = sizeof(settings_v1)/sizeof(settings_table);
+	}
+
+	/*
+	  we accept the sensor as reset when all registers have taken
+	  on their expected values.
+	 */
+	for (uint8_t i=0; i<num_settings; i++) {
+		uint8_t val;
+		int ret;
+		ret = read_reg(table[i].reg, val);
+		if (ret != OK)
+			return ret;
+		if (val == table[i].value)
+			continue;
+		ret = write_reg(table[i].reg, table[i].value);
+		if (ret != OK)
+			return ret;
+		ret = read_reg(table[i].reg, val);
+		if (ret != OK)
+			return ret;
+		if (val != table[i].value)
+			return -EIO;
+	}
+
+	_reset_complete = true;
 	return OK;
 }
 
@@ -366,7 +446,7 @@ void LidarLiteI2C::print_registers()
 
 	for (uint8_t reg = 0; reg <= 0x67; reg++) {
 		uint8_t val = 0;
-		int ret = lidar_transfer(&reg, 1, &val, 1);
+		int ret = read_reg(reg, val);
 
 		if (ret != OK) {
 			printf("%02x:XX ", (unsigned)reg);
@@ -387,6 +467,16 @@ void LidarLiteI2C::print_registers()
 int LidarLiteI2C::collect()
 {
 	int ret = -EIO;
+
+	/*
+	  see if the reset of the sensor is complete. If it isn't
+	  complete yet then don't do the collect cycle this time.
+	 */
+	if (! _reset_complete) {
+		ret = reset_sensor();
+		if (ret != OK)
+			return ret;
+	}
 
 	/* read from the sensor */
 	uint8_t val[2] = {0, 0};
@@ -410,8 +500,7 @@ int LidarLiteI2C::collect()
 			perf_count(_comms_errors);
 
 			if (perf_event_count(_comms_errors) % 10 == 0) {
-				perf_count(_sensor_resets);
-				reset_sensor();
+				_reset_complete = false;
 			}
 		}
 
@@ -439,13 +528,27 @@ int LidarLiteI2C::collect()
 			_zero_counter = 0;
 			perf_end(_sample_perf);
 			perf_count(_sensor_zero_resets);
-			return reset_sensor();
+			_reset_complete = false;
+			return -EIO;
 		}
 
 	} else {
 		_zero_counter = 0;
 	}
 
+	if (_last_distance == distance_cm) {
+		_same_value_counter++;
+		if (_same_value_counter >= 200) {
+			/*
+			  we are getting continuous identical values,
+			  the sensor may need to be reset
+			 */
+			_reset_complete = false;
+			_same_value_counter = 0;
+		}
+	} else {
+		_same_value_counter = 0;
+	}
 	_last_distance = distance_cm;
 	
 
