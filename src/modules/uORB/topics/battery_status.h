@@ -57,6 +57,7 @@ struct battery_status_s {
 	float   	voltage_filtered_v;		/**< Battery voltage in volts, filtered, 0 if unknown  	 */
 	float		current_a;		/**< Battery current in amperes, -1 if unknown */
 	float		discharged_mah;		/**< Discharged amount in mAh, -1 if unknown	 */
+	bool		is_powering_off;	/**< Power off event imminent indication, false if unknown */
 };
 
 /**
