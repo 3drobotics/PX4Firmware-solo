@@ -34,8 +34,8 @@
 /**
  * @file range.hpp
  *
- * UAVCAN --> ORB bridge for RangeMeasurement messages:
- *     uavcan.equipment.range_sensor.RangeMeasurement
+ * UAVCAN --> ORB bridge for Measurement messages:
+ *     uavcan.equipment.range_sensor.Measurement
  *
  * @author Pavel Kirienko <pavel.kirienko@gmail.com>
  * @author Andrew Chambers <achamber@gmail.com>
@@ -49,7 +49,7 @@
 #include <uORB/topics/distance_sensor.h>
 
 #include <uavcan/uavcan.hpp>
-#include <uavcan/equipment/range_sensor/RangeMeasurement.hpp>
+#include <uavcan/equipment/range_sensor/Measurement.hpp>
 
 
 
@@ -74,14 +74,14 @@ private:
 	/**
 	 * Range message will be reported via this callback.
 	 */
-	void range_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::range_sensor::RangeMeasurement> &msg);
+	void range_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::range_sensor::Measurement> &msg);
 
 	typedef uavcan::MethodBinder < UavcanRangeBridge *,
-		void (UavcanRangeBridge::*)(const uavcan::ReceivedDataStructure<uavcan::equipment::range_sensor::RangeMeasurement> &) >
+		void (UavcanRangeBridge::*)(const uavcan::ReceivedDataStructure<uavcan::equipment::range_sensor::Measurement> &) >
 		RangeCbBinder;
 
 	uavcan::INode &_node;
-	uavcan::Subscriber<uavcan::equipment::range_sensor::RangeMeasurement, RangeCbBinder> _sub_range;
+	uavcan::Subscriber<uavcan::equipment::range_sensor::Measurement, RangeCbBinder> _sub_range;
 	int _receiver_node_id = -1;
 
 	orb_advert_t _report_pub;                ///< uORB pub for Range data

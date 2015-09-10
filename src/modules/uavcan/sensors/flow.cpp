@@ -115,7 +115,7 @@ void UavcanFlowBridge::flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::
 
 	auto report = ::optical_flow_s();
 
-	report.timestamp = msg.time.husec;
+	report.timestamp = msg.time.usec;
         report.pixel_flow_x_integral = static_cast<float>(msg.integral.pixel_flow_x_integral) / 10000.0f;//convert to radians
         report.pixel_flow_y_integral = static_cast<float>(msg.integral.pixel_flow_y_integral) / 10000.0f;//convert to radians
         report.frame_count_since_last_readout = msg.integral.frame_count_since_last_readout;

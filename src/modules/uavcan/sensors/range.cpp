@@ -100,7 +100,7 @@ void UavcanRangeBridge::print_status() const
 	}
 }
 
-void UavcanRangeBridge::range_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::range_sensor::RangeMeasurement> &msg)
+void UavcanRangeBridge::range_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::range_sensor::Measurement> &msg)
 {
 	// This bridge does not support redundant Range Devices yet.
 	if (_receiver_node_id < 0) {
@@ -115,7 +115,7 @@ void UavcanRangeBridge::range_sub_cb(const uavcan::ReceivedDataStructure<uavcan:
 
 	auto report = ::distance_sensor_s();
 
-	report.timestamp = msg.timestamp.husec;
+	report.timestamp = msg.timestamp.usec;
         report.min_distance = PX4FLOW_MIN_DISTANCE;
         report.max_distance = PX4FLOW_MAX_DISTANCE;
         report.current_distance = msg.range;
