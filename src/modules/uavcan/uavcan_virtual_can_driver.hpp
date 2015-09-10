@@ -379,7 +379,7 @@ class VirtualCanDriver : public uavcan::ICanDriver,
 				if (clock_gettime(CLOCK_REALTIME, &abstime) >= 0) {
 					abstime.tv_nsec += duration.toUSec() * 1000;
 
-					if (abstime.tv_nsec >= NsPerSec) {
+					if ((unsigned)abstime.tv_nsec >= NsPerSec) {
 						abstime.tv_sec++;
 						abstime.tv_nsec -= NsPerSec;
 					}
