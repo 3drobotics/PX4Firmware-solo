@@ -51,7 +51,10 @@ UavcanFlowBridge::UavcanFlowBridge(uavcan::INode &node) :
 	_node(node),
 	_sub_flow(node),
         _sensor_rotation(ROTATION_NONE),
-	_report_pub(-1)
+	_report_pub(-1),
+	last_packet_usec(0),
+	flow_x_integral(0),
+	flow_y_integral(0)
 {
 }
 
@@ -96,7 +99,7 @@ void UavcanFlowBridge::print_status() const
 		printf("N/A\n");
 
 	} else {
-		printf("%d\n", _receiver_node_id);
+		printf("%d -- (%g, %g) @ %lld\n", _receiver_node_id, flow_x_integral, flow_y_integral, last_packet_usec);
 	}
 }
 
@@ -141,4 +144,8 @@ void UavcanFlowBridge::flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::
 		_report_pub = orb_advertise(ORB_ID(optical_flow), &report);
 	}
 
+	// for print_status
+	last_packet_usec = report.timestamp;
+	flow_x_integral = report.pixel_flow_x_integral;
+	flow_y_integral = report.pixel_flow_y_integral;
 }

@@ -53,7 +53,9 @@ const char *const UavcanRangeBridge::NAME = "range";
 UavcanRangeBridge::UavcanRangeBridge(uavcan::INode &node) :
 	_node(node),
 	_sub_range(node),
-	_report_pub(-1)
+	_report_pub(-1),
+	last_packet_usec(0),
+	distance_cm(0)
 {
 }
 
@@ -96,7 +98,7 @@ void UavcanRangeBridge::print_status() const
 		printf("N/A\n");
 
 	} else {
-		printf("%d\n", _receiver_node_id);
+		printf("%d -- (%g) @ %lld\n", _receiver_node_id, distance_cm, last_packet_usec);
 	}
 }
 
@@ -131,4 +133,7 @@ void UavcanRangeBridge::range_sub_cb(const uavcan::ReceivedDataStructure<uavcan:
 		_report_pub = orb_advertise(ORB_ID(distance_sensor), &report);
 	}
 
+	// for print_status
+	last_packet_usec = report.timestamp;
+	distance_cm = report.current_distance;
 }

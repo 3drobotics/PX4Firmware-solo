@@ -87,5 +87,6 @@ private:
 	enum Rotation _sensor_rotation;
 
 	orb_advert_t _report_pub;                ///< uORB pub for Flow data
-
+	uint64_t last_packet_usec;
+	float flow_x_integral, flow_y_integral;
 };
