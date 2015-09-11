@@ -125,7 +125,7 @@ void UavcanFlowBridge::flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::
         report.gyro_y_rate_integral = static_cast<float>(msg.integral.gyro_y_rate_integral) / 10000.0f; //convert to radians
         report.gyro_z_rate_integral = static_cast<float>(msg.integral.gyro_z_rate_integral) / 10000.0f; //convert to radians
         report.integration_timespan = msg.integral.integration_timespan; //microseconds
-        report.time_since_last_sonar_update = msg.integral.sonar_timestamp;//microseconds
+        report.time_since_last_sonar_update = msg.integral.distance_timestamp;//microseconds
         report.gyro_temperature = msg.integral.gyro_temperature;//Temperature * 100 in centi-degrees Celsius
 
         report.sensor_id = 0;
