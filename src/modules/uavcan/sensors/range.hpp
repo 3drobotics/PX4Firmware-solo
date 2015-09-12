@@ -86,5 +86,5 @@ private:
 
 	orb_advert_t _report_pub;                ///< uORB pub for Range data
 	uint64_t last_packet_usec;
-	float distance_cm;
+	float distance_m;
 };

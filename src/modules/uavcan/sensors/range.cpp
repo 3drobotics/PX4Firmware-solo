@@ -47,15 +47,15 @@
 
 const char *const UavcanRangeBridge::NAME = "range";
 
-#define PX4FLOW_MAX_DISTANCE 5.0f
-#define PX4FLOW_MIN_DISTANCE 0.3f
+#define PX4FLOW_MAX_DISTANCE 40.0f
+#define PX4FLOW_MIN_DISTANCE 0.05f
 
 UavcanRangeBridge::UavcanRangeBridge(uavcan::INode &node) :
 	_node(node),
 	_sub_range(node),
 	_report_pub(-1),
 	last_packet_usec(0),
-	distance_cm(0)
+	distance_m(0)
 {
 }
 
@@ -98,7 +98,7 @@ void UavcanRangeBridge::print_status() const
 		printf("N/A\n");
 
 	} else {
-		printf("%d -- (%g) @ %lld\n", _receiver_node_id, distance_cm, last_packet_usec);
+		printf("%d -- (%dmm) @ %lld\n", _receiver_node_id, (int)(distance_m*1000), last_packet_usec);
 	}
 }
 
@@ -135,5 +135,5 @@ void UavcanRangeBridge::range_sub_cb(const uavcan::ReceivedDataStructure<uavcan:
 
 	// for print_status
 	last_packet_usec = report.timestamp;
-	distance_cm = report.current_distance;
+	distance_m = report.current_distance;
 }
