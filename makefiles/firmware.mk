@@ -229,7 +229,7 @@ $(MODULE_OBJS):		mkfile = $(patsubst %module.pre.o,%module.mk,$(relpath))
 $(MODULE_OBJS):		workdir = $(@D)
 $(MODULE_OBJS):		$(GLOBAL_DEPS) $(NUTTX_CONFIG_HEADER)
 	$(Q) $(MKDIR) -p $(workdir)
-	$(Q) $(MAKE) -r -f $(PX4_MK_DIR)module.mk \
+	$(Q)+ $(MAKE) -r -f $(PX4_MK_DIR)module.mk \
 		-C $(workdir) \
 		MODULE_WORK_DIR=$(workdir) \
 		MODULE_OBJ=$@ \
@@ -246,7 +246,7 @@ $(MODULE_CLEANS):	relpath = $(patsubst $(WORK_DIR)%,%,$@)
 $(MODULE_CLEANS):	mkfile = $(patsubst %clean,%module.mk,$(relpath))
 $(MODULE_CLEANS):
 	@$(ECHO) %% cleaning using $(mkfile)
-	$(Q) $(MAKE) -r -f $(PX4_MK_DIR)module.mk \
+	$(Q)+ $(MAKE) -r -f $(PX4_MK_DIR)module.mk \
 	MODULE_WORK_DIR=$(dir $@) \
 	MODULE_MK=$(mkfile) \
 	clean
@@ -289,7 +289,7 @@ $(LIBRARY_LIBS):	mkfile = $(patsubst %library.a,%library.mk,$(relpath))
 $(LIBRARY_LIBS):	workdir = $(@D)
 $(LIBRARY_LIBS):	$(GLOBAL_DEPS) $(NUTTX_CONFIG_HEADER)
 	$(Q) $(MKDIR) -p $(workdir)
-	$(Q) $(MAKE) -r -f $(PX4_MK_DIR)library.mk \
+	$(Q)+ $(MAKE) -r -f $(PX4_MK_DIR)library.mk \
 		-C $(workdir) \
 		LIBRARY_WORK_DIR=$(workdir) \
 		LIBRARY_LIB=$@ \
@@ -306,7 +306,7 @@ $(LIBRARY_CLEANS):	relpath = $(patsubst $(WORK_DIR)%,%,$@)
 $(LIBRARY_CLEANS):	mkfile = $(patsubst %clean,%library.mk,$(relpath))
 $(LIBRARY_CLEANS):
 	@$(ECHO) %% cleaning using $(mkfile)
-	$(Q) $(MAKE) -r -f $(PX4_MK_DIR)library.mk \
+	$(Q)+ $(MAKE) -r -f $(PX4_MK_DIR)library.mk \
 	LIBRARY_WORK_DIR=$(dir $@) \
 	LIBRARY_MK=$(mkfile) \
 	clean
