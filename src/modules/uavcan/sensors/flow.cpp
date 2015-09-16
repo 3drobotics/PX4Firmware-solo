@@ -103,7 +103,7 @@ void UavcanFlowBridge::print_status() const
 	}
 }
 
-void UavcanFlowBridge::flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::equipment::flow::optical_flow::LegacyRawSample> &msg)
+void UavcanFlowBridge::flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::equipment::flow::optical_flow::RawSample> &msg)
 {
 	// This bridge does not support redundant Flow Devices yet.
 	if (_receiver_node_id < 0) {
@@ -119,19 +119,20 @@ void UavcanFlowBridge::flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::
 	auto report = ::optical_flow_s();
 
 	report.timestamp = msg.time.usec;
-        report.pixel_flow_x_integral = static_cast<float>(msg.integral.pixel_flow_x_integral) / 10000.0f;//convert to radians
-        report.pixel_flow_y_integral = static_cast<float>(msg.integral.pixel_flow_y_integral) / 10000.0f;//convert to radians
-        report.frame_count_since_last_readout = msg.integral.frame_count_since_last_readout;
-        report.ground_distance_m = static_cast<float>(msg.integral.ground_distance) / 1000.0f;//convert to meters
-        report.quality = msg.integral.qual; //0:bad ; 255 max quality
-        report.gyro_x_rate_integral = static_cast<float>(msg.integral.gyro_x_rate_integral) / 10000.0f; //convert to radians
-        report.gyro_y_rate_integral = static_cast<float>(msg.integral.gyro_y_rate_integral) / 10000.0f; //convert to radians
-        report.gyro_z_rate_integral = static_cast<float>(msg.integral.gyro_z_rate_integral) / 10000.0f; //convert to radians
-        report.integration_timespan = msg.integral.integration_timespan; //microseconds
-        report.time_since_last_sonar_update = msg.integral.distance_timestamp;//microseconds
-        report.gyro_temperature = msg.integral.gyro_temperature;//Temperature * 100 in centi-degrees Celsius
-
-        report.sensor_id = 0;
+        report.sensor_id = msg.sensor_id;
+	report.pixel_flow_x_integral = msg.flow_integral_xy_radians[0];
+	report.pixel_flow_y_integral = msg.flow_integral_xy_radians[1];
+	report.gyro_x_rate_integral = msg.gyro_rate_integral_xyz_radians[0];
+	report.gyro_y_rate_integral = msg.gyro_rate_integral_xyz_radians[1];
+	report.gyro_z_rate_integral = msg.gyro_rate_integral_xyz_radians[2];
+	/* Scale quality to 0-255 */
+	report.quality = msg.samples_matched_pct * 255;
+	report.integration_timespan = msg.integration_time_usec;
+	report.gyro_temperature = msg.gyro_temperature_celsius * 100;
+	/* These are legacy struct members so we set them to 0 */
+	report.frame_count_since_last_readout = 0;
+	report.ground_distance_m = 0;
+	report.time_since_last_sonar_update = 0;
 
         /* rotate measurements according to parameter */
         float zeroval = 0.0f;

@@ -34,8 +34,8 @@
 /**
  * @file flow.hpp
  *
- * UAVCAN --> ORB bridge for Legacy Flow messages:
- *     threedr.equipment.flow.optical_flow.LegacyRawSample
+ * UAVCAN --> ORB bridge for Flow messages:
+ *     threedr.equipment.flow.optical_flow.RawSample
  *
  * @author Pavel Kirienko <pavel.kirienko@gmail.com>
  * @author Andrew Chambers <achamber@gmail.com>
@@ -49,7 +49,7 @@
 #include <uORB/topics/optical_flow.h>
 
 #include <uavcan/uavcan.hpp>
-#include <threedr/equipment/flow/optical_flow/LegacyRawSample.hpp>
+#include <threedr/equipment/flow/optical_flow/RawSample.hpp>
 #include <conversion/rotation.h>
 
 
@@ -74,14 +74,14 @@ private:
 	/**
 	 * Flow message will be reported via this callback.
 	 */
-	void flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::equipment::flow::optical_flow::LegacyRawSample> &msg);
+	void flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::equipment::flow::optical_flow::RawSample> &msg);
 
 	typedef uavcan::MethodBinder < UavcanFlowBridge *,
-		void (UavcanFlowBridge::*)(const uavcan::ReceivedDataStructure<threedr::equipment::flow::optical_flow::LegacyRawSample> &) >
+		void (UavcanFlowBridge::*)(const uavcan::ReceivedDataStructure<threedr::equipment::flow::optical_flow::RawSample> &) >
 		FlowCbBinder;
 
 	uavcan::INode &_node;
-	uavcan::Subscriber<threedr::equipment::flow::optical_flow::LegacyRawSample, FlowCbBinder> _sub_flow;
+	uavcan::Subscriber<threedr::equipment::flow::optical_flow::RawSample, FlowCbBinder> _sub_flow;
 	int _receiver_node_id = -1;
 
 	enum Rotation _sensor_rotation;
