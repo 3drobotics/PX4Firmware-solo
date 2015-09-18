@@ -118,15 +118,14 @@ void UavcanFlowBridge::flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::
 
 	auto report = ::optical_flow_s();
 
-	report.timestamp = msg.time.usec;
-        report.sensor_id = msg.sensor_id;
+	report.timestamp = msg.timestamp.usec;
+        report.sensor_id = _receiver_node_id;
 	report.pixel_flow_x_integral = msg.flow_integral_xy_radians[0];
 	report.pixel_flow_y_integral = msg.flow_integral_xy_radians[1];
 	report.gyro_x_rate_integral = msg.gyro_rate_integral_xyz_radians[0];
 	report.gyro_y_rate_integral = msg.gyro_rate_integral_xyz_radians[1];
 	report.gyro_z_rate_integral = msg.gyro_rate_integral_xyz_radians[2];
-	/* Scale quality to 0-255 */
-	report.quality = msg.samples_matched_pct * 255;
+	report.quality = msg.samples_matched_pct;
 	report.integration_timespan = msg.integration_time_usec;
 	report.gyro_temperature = msg.gyro_temperature_celsius * 100;
 	/* These are legacy struct members so we set them to 0 */
