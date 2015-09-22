@@ -99,7 +99,8 @@ void UavcanFlowBridge::print_status() const
 		printf("N/A\n");
 
 	} else {
-		printf("%d -- (%g, %g) @ %lld\n", _receiver_node_id, flow_x_integral, flow_y_integral, last_packet_usec);
+		printf("%d -- (%dmrad, %dmrad) @ %lld\n", _receiver_node_id,
+				(int)(flow_x_integral*1000), (int)(flow_y_integral*1000), last_packet_usec);
 	}
 }
 
