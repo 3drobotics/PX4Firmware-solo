@@ -163,9 +163,9 @@ int UavcanServers::start(unsigned num_ifaces, uavcan::INode &main_node)
 
 	rv = pthread_create(&_instance->_subnode_thread, &tattr, static_cast<pthread_startroutine_t>(run_trampoline), NULL);
 
-	if (rv < 0) {
-		warnx("pthread_create() failed: %d", errno);
-		rv =  -errno;
+	if (rv != 0) {
+	        rv = -rv;
+		warnx("pthread_create() failed: %d", rv);
 		delete _instance;
 		_instance = nullptr;
 	}
