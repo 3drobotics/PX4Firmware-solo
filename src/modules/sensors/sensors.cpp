@@ -2131,6 +2131,7 @@ Sensors::task_main()
 	_battery_status.voltage_filtered_v = -1.0f;
 	_battery_status.current_a = -1.0f;
 	_battery_status.discharged_mah = -1.0f;
+	_battery_status.is_powering_off = false;
 
 	/* get a set of initial values */
 	accel_poll(raw);
