@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2014 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2014, 2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,51 +31,61 @@
  *
  ****************************************************************************/
 
-#include <uavcan_stm32/uavcan_stm32.hpp>
-#include <drivers/drv_hrt.h>
-
 /**
- * @file uavcan_clock.cpp
+ * @file flow.hpp
  *
- * Implements a clock for the CAN node.
+ * UAVCAN --> ORB bridge for Legacy Flow messages:
+ *     threedr.equipment.flow.optical_flow.LegacyRawSample
  *
  * @author Pavel Kirienko <pavel.kirienko@gmail.com>
+ * @author Andrew Chambers <achamber@gmail.com>
+ * @author David Sidrane <david_s5@nscdg.com>
+ *
  */
 
-namespace uavcan_stm32
+#pragma once
+
+#include <uORB/uORB.h>
+#include <uORB/topics/optical_flow.h>
+
+#include <uavcan/uavcan.hpp>
+#include <threedr/equipment/flow/optical_flow/LegacyRawSample.hpp>
+#include <conversion/rotation.h>
+
+
+#include "sensor_bridge.hpp"
+
+class UavcanFlowBridge : public IUavcanSensorBridge
 {
-namespace clock
-{
+public:
+	static const char *const NAME;
 
-uavcan::MonotonicTime getMonotonic()
-{
-	return uavcan::MonotonicTime::fromUSec(hrt_absolute_time());
-}
+	UavcanFlowBridge(uavcan::INode &node);
 
-uavcan::UtcTime getUtc()
-{
-	return uavcan::UtcTime();
-}
+	const char *get_name() const override { return NAME; }
 
-void adjustUtc(uavcan::UtcDuration adjustment)
-{
-	(void)adjustment;
-}
+	int init() override;
 
-uavcan::uint64_t getUtcUSecFromCanInterrupt();
+	unsigned get_num_redundant_channels() const override;
 
-uavcan::uint64_t getUtcUSecFromCanInterrupt()
-{
-	return 0;
-}
+	void print_status() const override;
 
-} // namespace clock
+private:
+	/**
+	 * Flow message will be reported via this callback.
+	 */
+	void flow_sub_cb(const uavcan::ReceivedDataStructure<threedr::equipment::flow::optical_flow::LegacyRawSample> &msg);
 
-SystemClock &SystemClock::instance()
-{
-	static SystemClock inst;
-	return inst;
-}
+	typedef uavcan::MethodBinder < UavcanFlowBridge *,
+		void (UavcanFlowBridge::*)(const uavcan::ReceivedDataStructure<threedr::equipment::flow::optical_flow::LegacyRawSample> &) >
+		FlowCbBinder;
 
-}
+	uavcan::INode &_node;
+	uavcan::Subscriber<threedr::equipment::flow::optical_flow::LegacyRawSample, FlowCbBinder> _sub_flow;
+	int _receiver_node_id = -1;
 
+	enum Rotation _sensor_rotation;
+
+	orb_advert_t _report_pub;                ///< uORB pub for Flow data
+
+};

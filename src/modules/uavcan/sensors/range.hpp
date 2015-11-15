@@ -32,31 +32,35 @@
  ****************************************************************************/
 
 /**
- * @file gnss.hpp
+ * @file range.hpp
  *
- * UAVCAN --> ORB bridge for GNSS messages:
- *     uavcan.equipment.gnss.Fix
+ * UAVCAN --> ORB bridge for RangeMeasurement messages:
+ *     uavcan.equipment.range_sensor.RangeMeasurement
  *
  * @author Pavel Kirienko <pavel.kirienko@gmail.com>
  * @author Andrew Chambers <achamber@gmail.com>
+ * @author David Sidrane <david_s5@nscdg.com>
+ *
  */
 
 #pragma once
 
 #include <uORB/uORB.h>
-#include <uORB/topics/vehicle_gps_position.h>
+#include <uORB/topics/distance_sensor.h>
 
 #include <uavcan/uavcan.hpp>
-#include <uavcan/equipment/gnss/Fix.hpp>
+#include <uavcan/equipment/range_sensor/RangeMeasurement.hpp>
+
+
 
 #include "sensor_bridge.hpp"
 
-class UavcanGnssBridge : public IUavcanSensorBridge
+class UavcanRangeBridge : public IUavcanSensorBridge
 {
 public:
 	static const char *const NAME;
 
-	UavcanGnssBridge(uavcan::INode &node);
+	UavcanRangeBridge(uavcan::INode &node);
 
 	const char *get_name() const override { return NAME; }
 
@@ -68,18 +72,18 @@ public:
 
 private:
 	/**
-	 * GNSS fix message will be reported via this callback.
+	 * Range message will be reported via this callback.
 	 */
-	void gnss_fix_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::gnss::Fix> &msg);
+	void range_sub_cb(const uavcan::ReceivedDataStructure<uavcan::equipment::range_sensor::RangeMeasurement> &msg);
 
-	typedef uavcan::MethodBinder < UavcanGnssBridge *,
-		void (UavcanGnssBridge::*)(const uavcan::ReceivedDataStructure<uavcan::equipment::gnss::Fix> &) >
-		FixCbBinder;
+	typedef uavcan::MethodBinder < UavcanRangeBridge *,
+		void (UavcanRangeBridge::*)(const uavcan::ReceivedDataStructure<uavcan::equipment::range_sensor::RangeMeasurement> &) >
+		RangeCbBinder;
 
 	uavcan::INode &_node;
-	uavcan::Subscriber<uavcan::equipment::gnss::Fix, FixCbBinder> _sub_fix;
+	uavcan::Subscriber<uavcan::equipment::range_sensor::RangeMeasurement, RangeCbBinder> _sub_range;
 	int _receiver_node_id = -1;
 
-	orb_advert_t _report_pub;                ///< uORB pub for gnss position
+	orb_advert_t _report_pub;                ///< uORB pub for Range data
 
 };
