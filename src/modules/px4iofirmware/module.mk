@@ -1,11 +1,11 @@
 
 SRCS		= adc.c \
 		  controls.c \
-		  dsm.c \
 		  px4io.c \
 		  registers.c \
 		  safety.c \
-		  sbus.c \
+		  ../../lib/rc/sbus.c \
+		  ../../lib/rc/dsm.c \
 		  ../systemlib/up_cxxinitialize.c \
 		  ../systemlib/perf_counter.c \
 		  mixer.cpp \
@@ -27,4 +27,3 @@ endif
 
 SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 include $(SELF_DIR)../systemlib/mixer/multi_tables.mk
-	
