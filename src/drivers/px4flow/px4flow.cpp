@@ -678,6 +678,7 @@ start()
 		#endif
 
 			delete g_dev;
+#ifdef PX4_I2C_BUS_ONBOARD
 			/* try 3rd bus */
 			g_dev = new PX4FLOW(PX4_I2C_BUS_ONBOARD);
 
@@ -688,7 +689,7 @@ start()
 			if (OK != g_dev->init()) {
 				goto fail;
 			}
-
+#endif
 		#ifdef PX4_I2C_BUS_ESC
 		}
 		#endif
