@@ -41,9 +41,11 @@
 
 #include <stdint.h>
 
+// #include "build_git_version.h"
+
 __BEGIN_DECLS
 
-__EXPORT extern const char* px4_git_version;
+__EXPORT extern const char *px4_git_version;
 __EXPORT extern const uint64_t px4_git_version_binary;
 
 __END_DECLS

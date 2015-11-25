@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2013 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,21 +32,43 @@
  ****************************************************************************/
 
 /**
- * @file rc_check.h
+ * @file print_load_posix.c
  *
- * RC calibration check
+ * Print the current system load.
+ *
+ * @author Lorenz Meier <lorenz@px4.io>
  */
 
-#pragma once
+#include <string.h>
+#include <stdio.h>
 
-__BEGIN_DECLS
+#include <systemlib/cpuload.h>
+#include <systemlib/printload.h>
+#include <drivers/drv_hrt.h>
 
-/**
- * Check the RC calibration
- *
- * @return			0 / OK if RC calibration is ok, index + 1 of the first
- *				channel that failed else (so 1 == first channel failed)
- */
-__EXPORT int	rc_calibration_check(int mavlink_fd, bool report_fail);
+extern struct system_load_s system_load;
 
-__END_DECLS
+#define CL "\033[K" // clear line
+
+void init_print_load_s(uint64_t t, struct print_load_s *s)
+{
+
+	s->total_user_time = 0;
+
+	s->running_count = 0;
+	s->blocked_count = 0;
+
+	s->new_time = t;
+	s->interval_start_time = t;
+
+	for (int i = 0; i < CONFIG_MAX_TASKS; i++) {
+		s->last_times[i] = 0;
+	}
+
+	s->interval_time_ms_inv = 0.f;
+}
+
+void print_load(uint64_t t, int fd, struct print_load_s *print_state)
+{
+}
+

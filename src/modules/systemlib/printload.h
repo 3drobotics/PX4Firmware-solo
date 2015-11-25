@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (c) 2013 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -32,21 +32,39 @@
  ****************************************************************************/
 
 /**
- * @file rc_check.h
+ * @file printload.h
  *
- * RC calibration check
+ * Print the current system load.
+ *
+ * @author Lorenz Meier <lorenz@px4.io>
  */
 
 #pragma once
 
 __BEGIN_DECLS
 
-/**
- * Check the RC calibration
- *
- * @return			0 / OK if RC calibration is ok, index + 1 of the first
- *				channel that failed else (so 1 == first channel failed)
- */
-__EXPORT int	rc_calibration_check(int mavlink_fd, bool report_fail);
+#include <px4_config.h>
+#include <stdint.h>
+
+#ifndef CONFIG_MAX_TASKS
+#define CONFIG_MAX_TASKS 64
+#endif
+
+struct print_load_s {
+	uint64_t total_user_time;
+
+	int running_count;
+	int blocked_count;
+
+	uint64_t new_time;
+	uint64_t interval_start_time;
+	uint64_t last_times[CONFIG_MAX_TASKS];
+	float curr_loads[CONFIG_MAX_TASKS];
+	float interval_time_ms_inv;
+};
+
+__EXPORT void init_print_load_s(uint64_t t, struct print_load_s *s);
+
+__EXPORT void print_load(uint64_t t, int fd, struct print_load_s *print_state);
 
 __END_DECLS
