@@ -139,6 +139,8 @@ private:
 	actuator_armed_s	_armed;
 	unsigned	_num_outputs;
 	int		_class_instance;
+	int		_sbus_fd;
+	int		_dsm_fd;
 
 	volatile bool	_task_should_exit;
 	bool		_servo_armed;
@@ -275,6 +277,8 @@ PX4FMU::PX4FMU() :
 	_num_outputs(0),
 	_class_instance(0),
 	_task_should_exit(false),
+	_sbus_fd(-1),
+	_dsm_fd(-1),
 	_servo_armed(false),
 	_pwm_on(false),
 	_mixers(nullptr),
@@ -303,7 +307,22 @@ PX4FMU::PX4FMU() :
 	memset(_controls, 0, sizeof(_controls));
 	memset(_poll_fds, 0, sizeof(_poll_fds));
 
-	_debug_enabled = true;
+#ifdef HRT_PPM_CHANNEL
+	// rc input, published to ORB
+	memset(&_rc_in, 0, sizeof(_rc_in));
+	_rc_in.input_source = input_rc_s::RC_INPUT_SOURCE_PX4FMU_PPM;
+#endif
+
+#ifdef SBUS_SERIAL_PORT
+	_sbus_fd = sbus_init(SBUS_SERIAL_PORT, true);
+#endif
+
+#ifdef DSM_SERIAL_PORT
+	_dsm_fd = dsm_init(DSM_SERIAL_PORT);
+#endif
+
+	/* only enable this during development */
+	_debug_enabled = false;
 }
 
 PX4FMU::~PX4FMU()
