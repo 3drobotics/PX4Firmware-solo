@@ -630,7 +630,7 @@ MPU6000::init()
 
 	/* if probe/setup failed, bail now */
 	if (ret != OK) {
-		debug("SPI setup failed");
+		DEVICE_DEBUG("SPI setup failed");
 		return ret;
 	}
 
@@ -666,7 +666,7 @@ MPU6000::init()
 	ret = _gyro->init();
 	/* if probe/setup failed, bail now */
 	if (ret != OK) {
-		debug("gyro init failed");
+		DEVICE_DEBUG("gyro init failed");
 		return ret;
 	}
 
@@ -783,7 +783,7 @@ MPU6000::probe()
 	uint8_t expected = is_mpu_device() ? MPU_WHOAMI_6000 : ICM_WHOAMI_20608;
 
 	if (whoami != expected) {
-		debug("unexpected WHOAMI 0x%02x", whoami);
+		DEVICE_DEBUG("unexpected WHOAMI 0x%02x", whoami);
 		return -EIO;
 	}
 
@@ -805,12 +805,12 @@ MPU6000::probe()
 	case MPU6000_REV_D9:
 	case MPU6000_REV_D10:
 	case ICM20608_REV_00:
-		debug("ID 0x%02x", _product);
+		DEVICE_DEBUG("ID 0x%02x", _product);
 		_checked_values[0] = _product;
 		return OK;
 	}
 
-	debug("unexpected ID 0x%02x", _product);
+	DEVICE_DEBUG("unexpected ID 0x%02x", _product);
 	return -EIO;
 }
 
@@ -1930,7 +1930,7 @@ MPU6000_gyro::init()
 
 	/* if probe/setup failed, bail now */
 	if (ret != OK) {
-		debug("gyro init failed");
+		DEVICE_DEBUG("gyro init failed");
 		return ret;
 	}
 
