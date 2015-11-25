@@ -61,7 +61,7 @@ int UavcanBarometerBridge::init()
 
 	res = _sub_air_data.start(AirDataCbBinder(this, &UavcanBarometerBridge::air_data_sub_cb));
 	if (res < 0) {
-		log("failed to start uavcan sub: %d", res);
+		DEVICE_LOG("failed to start uavcan sub: %d", res);
 		return res;
 	}
 	return 0;
@@ -95,7 +95,7 @@ int UavcanBarometerBridge::ioctl(struct file *filp, int cmd, unsigned long arg)
 		if ((arg < 80000) || (arg > 120000)) {
 			return -EINVAL;
 		} else {
-			log("new msl pressure %u", _msl_pressure);
+			DEVICE_LOG("new msl pressure %u", _msl_pressure);
 			_msl_pressure = arg;
 			return OK;
 		}
