@@ -1,6 +1,6 @@
 ############################################################################
 #
-#   Copyright (c) 2012, 2013 PX4 Development Team. All rights reserved.
+#   Copyright (c) 2015 PX4 Development Team. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -31,27 +31,38 @@
 #
 ############################################################################
 
-#
-# Build the device driver framework.
-#
+set(SRCS)
 
-ifeq ($(PX4_TARGET_OS),nuttx)
-SRCS =		  \
-		  device_nuttx.cpp \
-		  integrator.cpp \
-		  cdev.cpp \
-		  i2c_nuttx.cpp \
-		  pio.cpp \
-		  spi.cpp \
-		  ringbuffer.cpp
-else
-SRCS =		  \
-		  device_posix.cpp \
-		  vdev.cpp \
-		  vfile.cpp \
-		  vdev_posix.cpp \
-		  i2c_posix.cpp  \
-		  sim.cpp \
-		  ringbuffer.cpp \
-		  integrator.cpp
-endif
+list(APPEND SRCS
+	ringbuffer.cpp
+	integrator.cpp
+)
+
+if(${OS} STREQUAL "nuttx")
+	if (NOT ${BOARD} STREQUAL "sim")
+		list(APPEND SRCS
+			device_nuttx.cpp
+			cdev.cpp
+			i2c_nuttx.cpp
+			pio.cpp
+			spi.cpp
+		)
+	endif()
+else()
+	list(APPEND SRCS
+		device_posix.cpp
+		vdev.cpp
+		vfile.cpp
+		vdev_posix.cpp
+		i2c_posix.cpp
+		sim.cpp
+	)
+endif()
+
+px4_add_module(
+	MODULE drivers__device
+	SRCS ${SRCS}
+	DEPENDS
+		platforms__common
+	)
+# vim: set noet ft=cmake fenc=utf-8 ff=unix : 
