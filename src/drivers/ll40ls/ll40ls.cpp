@@ -95,7 +95,7 @@ void	usage();
 LidarLite * get_dev(const bool use_i2c, const int bus) {
 	LidarLite * g_dev = nullptr;
 	if (use_i2c) {
-		g_dev = static_cast<LidarLite*>(bus == PX4_I2C_BUS_ONBOARD ? g_dev_int : g_dev_ext);
+		g_dev = static_cast<LidarLite*>(bus == PX4_I2C_BUS_EXPANSION ? g_dev_ext : g_dev_int);
 		if (g_dev == nullptr) {
 			errx(1, "i2c driver not running");
 		}
@@ -221,7 +221,7 @@ void start(const bool use_i2c, const int bus)
 
 fail:
 
-	if (g_dev_int != nullptr && (bus == -1 || bus == PX4_I2C_BUS_ONBOARD)) {
+	if (g_dev_int != nullptr && (bus == -1 || bus != PX4_I2C_BUS_EXPANSION)) {
 		delete g_dev_int;
 		g_dev_int = nullptr;
 	}
@@ -245,7 +245,7 @@ fail:
 void stop(const bool use_i2c, const int bus)
 {
 	if (use_i2c) {
-		if (bus == PX4_I2C_BUS_ONBOARD) {
+		if (bus != PX4_I2C_BUS_EXPANSION) {
 			if (g_dev_int != nullptr) {
 				delete g_dev_int;
 				g_dev_int = nullptr;
@@ -280,7 +280,7 @@ test(const bool use_i2c, const int bus)
 	const char *path;
 
 	if (use_i2c) {
-		path = ((bus == PX4_I2C_BUS_ONBOARD) ? LL40LS_DEVICE_PATH_INT : LL40LS_DEVICE_PATH_EXT);
+		path = ((bus == PX4_I2C_BUS_EXPANSION) ? LL40LS_DEVICE_PATH_EXT : LL40LS_DEVICE_PATH_INT);
 
 	} else {
 		path = LL40LS_DEVICE_PATH_PWM;
@@ -351,7 +351,7 @@ reset(const bool use_i2c, const int bus)
 	const char *path;
 
 	if (use_i2c) {
-		path = ((bus == PX4_I2C_BUS_ONBOARD) ? LL40LS_DEVICE_PATH_INT : LL40LS_DEVICE_PATH_EXT);
+		path = ((bus == PX4_I2C_BUS_EXPANSION) ? LL40LS_DEVICE_PATH_EXT : LL40LS_DEVICE_PATH_INT);
 
 	} else {
 		path = LL40LS_DEVICE_PATH_PWM;
