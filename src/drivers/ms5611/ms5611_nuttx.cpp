@@ -264,7 +264,7 @@ MS5611::init()
 
 	ret = CDev::init();
 	if (ret != OK) {
-		debug("CDev init failed");
+		DEVICE_DEBUG("CDev init failed");
 		goto out;
 	}
 
@@ -272,7 +272,7 @@ MS5611::init()
 	_reports = new ringbuffer::RingBuffer(2, sizeof(baro_report));
 
 	if (_reports == nullptr) {
-		debug("can't get memory for reports");
+		DEVICE_DEBUG("can't get memory for reports");
 		ret = -ENOMEM;
 		goto out;
 	}
