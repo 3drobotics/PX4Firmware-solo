@@ -161,7 +161,7 @@ define FMU_DEP
 $(BUILD_DIR)$(1).build/firmware.px4: $(IMAGE_DIR)px4io-$(call FMU_VERSION,$(1))_default.px4
 endef
 FMU_CONFIGS		:= $(filter px4fmu%,$(CONFIGS))
-$(foreach config,$(FMU_CONFIGS),$(eval $(call FMU_DEP,$(config))))
+# $(foreach config,$(FMU_CONFIGS),$(eval $(call FMU_DEP,$(config))))
 
 #
 # Build the NuttX export archives.
