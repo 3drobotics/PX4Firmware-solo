@@ -1717,6 +1717,7 @@ enum PortMode {
 	PORT_PWM_AND_SERIAL,
 	PORT_PWM_AND_GPIO,
 	PORT_PWM4,
+	PORT_PWM6,
 };
 
 PortMode g_port_mode;
@@ -1757,6 +1758,11 @@ fmu_new_mode(PortMode new_mode)
 	case PORT_PWM4:
 		/* select 4-pin PWM mode */
 		servo_mode = PX4FMU::MODE_4PWM;
+		break;
+
+	case PORT_PWM6:
+		/* select 6-pin PWM mode */
+		servo_mode = PX4FMU::MODE_6PWM;
 		break;
 #endif
 
@@ -2054,6 +2060,8 @@ fmu_main(int argc, char *argv[])
 
 	} else if (!strcmp(verb, "mode_pwm4")) {
 		new_mode = PORT_PWM4;
+	} else if (!strcmp(verb, "mode_pwm6")) {
+		new_mode = PORT_PWM6;
 #endif
 #if defined(CONFIG_ARCH_BOARD_PX4FMU_V1)
 
