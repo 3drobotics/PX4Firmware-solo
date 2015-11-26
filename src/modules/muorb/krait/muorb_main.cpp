@@ -1,8 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (C) 2013 PX4 Development Team. All rights reserved.
- *   Author: Hyon Lim <limhyon@gmail.com>
- *           Anton Babushkin <anton.babushkin@me.com>
+ *   Copyright (c) 2012-2015 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -33,35 +31,54 @@
  *
  ****************************************************************************/
 
-/*
- * @file attitude_estimator_so3_params.h
- *
- * Parameters for nonlinear complementary filters on the SO(3).
- */
+#include <string.h>
+#include "modules/uORB/uORBManager.hpp"
+#include "uORBKraitFastRpcChannel.hpp"
 
-#include <systemlib/param/param.h>
+extern "C" { __EXPORT int muorb_main(int argc, char *argv[]); }
 
-struct attitude_estimator_so3_params {
-	float Kp;
-	float Ki;
-	float roll_off;
-	float pitch_off;
-	float yaw_off;
-};
+static void usage()
+{
+	warnx("Usage: muorb 'start', 'stop', 'status'");
+}
 
-struct attitude_estimator_so3_param_handles {
-	param_t Kp, Ki;
-	param_t roll_off, pitch_off, yaw_off;
-};
 
-/**
- * Initialize all parameter handles and values
- *
- */
-int parameters_init(struct attitude_estimator_so3_param_handles *h);
+int
+muorb_main(int argc, char *argv[])
+{
+	if (argc < 2) {
+		usage();
+		return -EINVAL;
+	}
 
-/**
- * Update all parameters
- *
- */
-int parameters_update(const struct attitude_estimator_so3_param_handles *h, struct attitude_estimator_so3_params *p);
+	/*
+	 * Start/load the driver.
+	 *
+	 * XXX it would be nice to have a wrapper for this...
+	 */
+	if (!strcmp(argv[1], "start")) {
+		// register the fast rpc channel with UORB.
+		uORB::Manager::get_instance()->set_uorb_communicator(uORB::KraitFastRpcChannel::GetInstance());
+
+		// start the KaitFastRPC channel thread.
+		uORB::KraitFastRpcChannel::GetInstance()->Start();
+		return OK;
+
+	}
+
+	if (!strcmp(argv[1], "stop")) {
+
+		uORB::KraitFastRpcChannel::GetInstance()->Stop();
+		return OK;
+	}
+
+	/*
+	 * Print driver information.
+	 */
+	if (!strcmp(argv[1], "status")) {
+		return OK;
+	}
+
+	usage();
+	return -EINVAL;
+}
