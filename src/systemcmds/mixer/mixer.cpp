@@ -76,30 +76,37 @@ mixer_main(int argc, char *argv[])
 		}
 
 		int ret = load(argv[2], argv[3]);
-		if(ret !=0) {
+
+		if (ret != 0) {
 			warnx("failed to load mixer");
 			return 1;
 		}
+
 	} else {
 		usage("Unknown command");
 		return 1;
 	}
+
 	return 0;
 }
 
 static void
 usage(const char *reason)
 {
-	if (reason)
-		fprintf(stderr, "%s\n", reason);
+	if (reason && *reason) {
+		PX4_INFO("%s", reason);
+	}
 
-	fprintf(stderr, "usage:\n");
-	fprintf(stderr, "  mixer load <device> <filename>\n");
+	PX4_INFO("usage:");
+	PX4_INFO("  mixer load <device> <filename>");
 }
 
 static int
 load(const char *devname, const char *fname)
 {
+	// sleep a while to ensure device has been set up
+	usleep(20000);
+
 	int		dev;
 	char		buf[2048];
 
@@ -127,5 +134,6 @@ load(const char *devname, const char *fname)
 		warnx("error loading mixers from %s", fname);
 		return 1;
 	}
+
 	return 0;
 }
