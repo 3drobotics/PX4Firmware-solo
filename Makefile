@@ -264,10 +264,10 @@ generateuorbtopicheaders: checksubmodules
 		$(PX4_BASE)Tools/px_generate_uorb_topic_headers.py \
 		-d $(MSG_DIR) -o $(TOPICS_DIR) -e $(UORB_TEMPLATE_DIR) -t $(TOPICHEADER_TEMP_DIR))
 	@$(ECHO) "Generating multiplatform uORB topic wrapper headers"
+	$(Q) (rm -r $(TOPICHEADER_TEMP_DIR))
 	$(Q) (PYTHONPATH=$(GENMSG_PYTHONPATH):$(GENCPP_PYTHONPATH):$(PYTHONPATH) $(PYTHON) \
 		$(PX4_BASE)Tools/px_generate_uorb_topic_headers.py \
 		-d $(MSG_DIR) -o $(MULTIPLATFORM_HEADER_DIR) -e $(MULTIPLATFORM_TEMPLATE_DIR) -t $(TOPICHEADER_TEMP_DIR) -p $(MULTIPLATFORM_PREFIX))
-# clean up temporary files
 	$(Q) (rm -r $(TOPICHEADER_TEMP_DIR))
 
 #
