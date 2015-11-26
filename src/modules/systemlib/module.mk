@@ -50,6 +50,7 @@ SRCS		 = \
 		   mcu_version.c \
 		   bson/tinybson.c \
 		   circuit_breaker.cpp \
+		   printload.c \
 		   $(BUILD_DIR)git_version.c
 
 ifneq ($(ARDUPILOT_BUILD),1)
