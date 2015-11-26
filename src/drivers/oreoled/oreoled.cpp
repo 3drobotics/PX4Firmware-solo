@@ -258,10 +258,10 @@ OREOLED::info()
 	/* print health info on each LED */
 	for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
 		if (!_healthy[i]) {
-			log("oreo %u: BAD", (unsigned)i);
+			DEVICE_LOG("oreo %u: BAD", (unsigned)i);
 
 		} else {
-			log("oreo %u: OK", (unsigned)i);
+			DEVICE_LOG("oreo %u: OK", (unsigned)i);
 		}
 	}
 
@@ -334,7 +334,7 @@ OREOLED::cycle()
 				if (transfer(msg, sizeof(msg), reply, 3) == OK) {
 					if (reply[1] == OREOLED_BASE_I2C_ADDR + i &&
 					    reply[2] == msg[sizeof(msg) - 1]) {
-						log("oreoled %u ok - in bootloader", (unsigned)i);
+						DEVICE_LOG("oreoled %u ok - in bootloader", (unsigned)i);
 						_healthy[i] = true;
 						_num_healthy++;
 
@@ -350,12 +350,12 @@ OREOLED::cycle()
 					   which indicates a response from firmwares >= 1.3 */
 					} else if (reply[1] == OREOLED_BASE_I2C_ADDR + i &&
 					    reply[2] == msg[sizeof(msg) - 1] + 1) {
-						log("oreoled %u ok - in application", (unsigned)i);
+						DEVICE_LOG("oreoled %u ok - in application", (unsigned)i);
 						_healthy[i] = true;
 						_num_healthy++;
 
 					} else {
-						log("oreo reply errors: %u", (unsigned)_reply_errors);
+						DEVICE_LOG("oreo reply errors: %u", (unsigned)_reply_errors);
 						perf_count(_reply_errors);
 					}
 
