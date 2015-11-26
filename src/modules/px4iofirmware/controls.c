@@ -63,7 +63,7 @@ static perf_counter_t c_gather_sbus;
 static perf_counter_t c_gather_ppm;
 
 static int _dsm_fd = -1;
-int _sbus_fd = -1;
+__EXPORT int _sbus_fd = -1;
 
 static uint16_t rc_value_override = 0;
 

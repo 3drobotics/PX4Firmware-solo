@@ -25,5 +25,5 @@ SRCS		+= serial.c \
 		   ../systemlib/hx_stream.c
 endif
 
-SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
-include $(SELF_DIR)../systemlib/mixer/multi_tables.mk
+
+
