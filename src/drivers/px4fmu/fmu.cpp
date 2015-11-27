@@ -71,6 +71,11 @@
 #include <drivers/drv_mixer.h>
 #include <drivers/drv_rc_input.h>
 
+#include <lib/rc/sbus.h>
+#include <lib/rc/dsm.h>
+#include <lib/rc/st24.h>
+#include <lib/rc/sumd.h>
+
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/actuator_controls_0.h>
 #include <uORB/topics/actuator_controls_1.h>
@@ -89,7 +94,7 @@
  * This is the analog to FMU_INPUT_DROP_LIMIT_US on the IO side
  */
 
-#define CONTROL_INPUT_DROP_LIMIT_MS		20
+#define CONTROL_INPUT_DROP_LIMIT_MS		2
 #define NAN_VALUE	(0.0f/0.0f)
 
 class PX4FMU : public device::CDev
@@ -322,12 +327,9 @@ PX4FMU::PX4FMU() :
 	_rc_in.input_source = input_rc_s::RC_INPUT_SOURCE_PX4FMU_PPM;
 #endif
 
-#ifdef SBUS_SERIAL_PORT
-	_sbus_fd = sbus_init(SBUS_SERIAL_PORT, true);
-#endif
-
-#ifdef DSM_SERIAL_PORT
-	_dsm_fd = dsm_init(DSM_SERIAL_PORT);
+#ifdef GPIO_SBUS_INV
+	// this board has a GPIO to control SBUS inversion
+	stm32_configgpio(GPIO_SBUS_INV);
 #endif
 
 	/* only enable this during development */
@@ -643,6 +645,15 @@ PX4FMU::cycle()
 
 		update_pwm_rev_mask();
 
+#ifdef SBUS_SERIAL_PORT
+		_sbus_fd = sbus_init(SBUS_SERIAL_PORT, true);
+#endif
+
+	#ifdef DSM_SERIAL_PORT
+	// XXX rather than opening it we need to cycle between protocols until one is locked in
+	//_dsm_fd = dsm_init(DSM_SERIAL_PORT);
+	#endif
+
 		_initialized = true;
 	}
 
@@ -799,10 +810,46 @@ PX4FMU::cycle()
 		update_pwm_rev_mask();
 	}
 
+	bool rc_updated = false;
+
+#ifdef SBUS_SERIAL_PORT
+	bool sbus_failsafe, sbus_frame_drop;
+	uint16_t raw_rc_values[input_rc_s::RC_INPUT_MAX_CHANNELS];
+	uint16_t raw_rc_count;
+	bool sbus_updated = sbus_input(_sbus_fd, &raw_rc_values[0], &raw_rc_count, &sbus_failsafe, &sbus_frame_drop,
+				       input_rc_s::RC_INPUT_MAX_CHANNELS);
+
+	if (sbus_updated) {
+		// we have a new PPM frame. Publish it.
+		_rc_in.channel_count = raw_rc_count;
+
+		if (_rc_in.channel_count > input_rc_s::RC_INPUT_MAX_CHANNELS) {
+			_rc_in.channel_count = input_rc_s::RC_INPUT_MAX_CHANNELS;
+		}
+
+		for (uint8_t i = 0; i < _rc_in.channel_count; i++) {
+			_rc_in.values[i] = raw_rc_values[i];
+		}
+
+		_rc_in.timestamp_publication = hrt_absolute_time();
+		_rc_in.timestamp_last_signal = _rc_in.timestamp_publication;
+
+		_rc_in.rc_ppm_frame_length = 0;
+		_rc_in.rssi = (!sbus_frame_drop) ? RC_INPUT_RSSI_MAX : 0;
+		_rc_in.rc_failsafe = false;
+		_rc_in.rc_lost = false;
+		_rc_in.rc_lost_frame_count = 0;
+		_rc_in.rc_total_frame_count = 0;
+
+		rc_updated = true;
+	}
+#endif
+
 #ifdef HRT_PPM_CHANNEL
 
 	// see if we have new PPM input data
-	if (ppm_last_valid_decode != _rc_in.timestamp_last_signal) {
+	if ((ppm_last_valid_decode != _rc_in.timestamp_last_signal) &&
+		ppm_decoded_channels > 3) {
 		// we have a new PPM frame. Publish it.
 		_rc_in.channel_count = ppm_decoded_channels;
 
@@ -824,6 +871,12 @@ PX4FMU::cycle()
 		_rc_in.rc_lost_frame_count = 0;
 		_rc_in.rc_total_frame_count = 0;
 
+		rc_updated = true;
+	}
+
+#endif
+
+	if (rc_updated) {
 		/* lazily advertise on first publication */
 		if (_to_input_rc == nullptr) {
 			_to_input_rc = orb_advertise(ORB_ID(input_rc), &_rc_in);
@@ -833,7 +886,6 @@ PX4FMU::cycle()
 		}
 	}
 
-#endif
 	work_queue(HPWORK, &_work, (worker_t)&PX4FMU::cycle_trampoline, this, USEC2TICK(CONTROL_INPUT_DROP_LIMIT_MS * 1000));
 }
 
