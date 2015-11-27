@@ -99,8 +99,7 @@
 
 #include "modules/dataman/dataman.h"
 
-extern device::Device *PX4IO_i2c_interface() weak_function;
-extern device::Device *PX4IO_serial_interface() weak_function;
+#include "px4io_driver.h"
 
 #define PX4IO_SET_DEBUG			_IOC(0xff00, 0)
 #define PX4IO_INAIR_RESTART_ENABLE	_IOC(0xff00, 1)
@@ -228,7 +227,8 @@ public:
 	 *
 	 * @param[in] enable true=DSM satellite VCC is controlled by relay1, false=DSM satellite VCC not controlled
 	 */
-	inline void		set_dsm_vcc_ctl(bool enable) {
+	inline void		set_dsm_vcc_ctl(bool enable)
+	{
 		_dsm_vcc_ctl = enable;
 	};
 
@@ -237,7 +237,8 @@ public:
 	 *
 	 * @return true=DSM satellite VCC is controlled by relay1, false=DSM satellite VCC not controlled
 	 */
-	inline bool		get_dsm_vcc_ctl() {
+	inline bool		get_dsm_vcc_ctl()
+	{
 		return _dsm_vcc_ctl;
 	};
 #endif
@@ -560,11 +561,13 @@ PX4IO::~PX4IO()
 	}
 
 	/* well, kill it anyway, though this will probably crash */
-	if (_task != -1)
+	if (_task != -1) {
 		task_delete(_task);
+	}
 
-	if (_interface != nullptr)
+	if (_interface != nullptr) {
 		delete _interface;
+	}
 
 	/* deallocate perfs */
 	perf_free(_perf_update);
@@ -584,8 +587,9 @@ PX4IO::detect()
 		/* do regular cdev init */
 		ret = CDev::init();
 
-		if (ret != OK)
+		if (ret != OK) {
 			return ret;
+		}
 
 		/* get some parameters */
 		unsigned protocol = io_reg_get(PX4IO_PAGE_CONFIG, PX4IO_P_CONFIG_PROTOCOL_VERSION);
@@ -609,7 +613,8 @@ PX4IO::detect()
 }
 
 int
-PX4IO::init(bool rc_handling_disabled) {
+PX4IO::init(bool rc_handling_disabled)
+{
 	_rc_handling_disabled = rc_handling_disabled;
 	return init();
 }
@@ -632,8 +637,9 @@ PX4IO::init()
 	/* do regular cdev init */
 	ret = CDev::init();
 
-	if (ret != OK)
+	if (ret != OK) {
 		return ret;
+	}
 
 	/* get some parameters */
 	unsigned protocol;
@@ -672,14 +678,13 @@ PX4IO::init()
 		return -1;
 	}
 
-	if (_max_rc_input > input_rc_s::RC_INPUT_MAX_CHANNELS)
+	if (_max_rc_input > input_rc_s::RC_INPUT_MAX_CHANNELS) {
 		_max_rc_input = input_rc_s::RC_INPUT_MAX_CHANNELS;
+	}
 
-	if (!_rc_handling_disabled) {
 		param_get(param_find("RC_RSSI_PWM_CHAN"), &_rssi_pwm_chan);
 		param_get(param_find("RC_RSSI_PWM_MAX"), &_rssi_pwm_max);
 		param_get(param_find("RC_RSSI_PWM_MIN"), &_rssi_pwm_min);
-	}
 
 	/*
 	 * Check for IO flight state - if FMU was flagged to be in
@@ -693,8 +698,9 @@ PX4IO::init()
 	/* get IO's last seen FMU state */
 	ret = io_reg_get(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_ARMING, &reg, sizeof(reg));
 
-	if (ret != OK)
+	if (ret != OK) {
 		return ret;
+	}
 
 	/*
 	 * in-air restart is only tried if the IO board reports it is
@@ -861,7 +867,7 @@ PX4IO::init()
 	_task = px4_task_spawn_cmd("px4io",
 					SCHED_DEFAULT,
 					SCHED_PRIORITY_ACTUATOR_OUTPUTS,
-					1800,
+				   1500,
 					(main_t)&PX4IO::task_main_trampoline,
 					nullptr);
 
@@ -931,11 +937,13 @@ PX4IO::task_main()
 
 		/* adjust update interval */
 		if (_update_interval != 0) {
-			if (_update_interval < UPDATE_INTERVAL_MIN)
+			if (_update_interval < UPDATE_INTERVAL_MIN) {
 				_update_interval = UPDATE_INTERVAL_MIN;
+			}
 
-			if (_update_interval > 100)
+			if (_update_interval > 100) {
 				_update_interval = 100;
+			}
 
 			orb_set_interval(_t_actuator_controls_0, _update_interval);
 			/*
@@ -986,8 +994,9 @@ PX4IO::task_main()
 			orb_check_last = now;
 
 			/* try to claim the MAVLink log FD */
-			if (_mavlink_fd < 0)
+			if (_mavlink_fd < 0) {
 				_mavlink_fd = ::open(MAVLINK_LOG_DEVICE, 0);
+			}
 
 			/* check updates on uORB topics and handle it */
 			bool updated = false;
@@ -1028,7 +1037,7 @@ PX4IO::task_main()
 				parameter_update_s pupdate;
 				orb_copy(ORB_ID(parameter_update), _t_param, &pupdate);
 
-				int32_t dsm_bind_val = -1;
+				int32_t dsm_bind_val;
 				param_t dsm_bind_param;
 
 				/* see if bind parameter has been set, and reset it to -1 */
@@ -1118,6 +1127,52 @@ PX4IO::task_main()
 				}
 
 				(void)io_reg_set(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_PWM_REVERSE, pwm_invert_mask);
+
+				float trim_val;
+				param_t parm_handle;
+
+				parm_handle = param_find("TRIM_ROLL");
+
+				if (parm_handle != PARAM_INVALID) {
+					param_get(parm_handle, &trim_val);
+					(void)io_reg_set(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_TRIM_ROLL, FLOAT_TO_REG(trim_val));
+				}
+
+				parm_handle = param_find("TRIM_PITCH");
+
+				if (parm_handle != PARAM_INVALID) {
+					param_get(parm_handle, &trim_val);
+					(void)io_reg_set(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_TRIM_PITCH, FLOAT_TO_REG(trim_val));
+				}
+
+				parm_handle = param_find("TRIM_YAW");
+
+				if (parm_handle != PARAM_INVALID) {
+					param_get(parm_handle, &trim_val);
+					(void)io_reg_set(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_TRIM_YAW, FLOAT_TO_REG(trim_val));
+				}
+
+				/* S.BUS output */
+				int sbus_mode;
+				parm_handle = param_find("PWM_SBUS_MODE");
+
+				if (parm_handle != PARAM_INVALID) {
+					param_get(parm_handle, &sbus_mode);
+
+					if (sbus_mode == 1) {
+						/* enable S.BUS 1 */
+						(void)io_reg_modify(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_FEATURES, 0, PX4IO_P_SETUP_FEATURES_SBUS1_OUT);
+
+					} else if (sbus_mode == 2) {
+						/* enable S.BUS 2 */
+						(void)io_reg_modify(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_FEATURES, 0, PX4IO_P_SETUP_FEATURES_SBUS2_OUT);
+
+					} else {
+						/* disable S.BUS */
+						(void)io_reg_modify(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_FEATURES,
+								    (PX4IO_P_SETUP_FEATURES_SBUS1_OUT | PX4IO_P_SETUP_FEATURES_SBUS2_OUT), 0);
+					}
+				}
 			}
 
 		}
@@ -1131,8 +1186,9 @@ out:
 	DEVICE_DEBUG("exiting");
 
 	/* clean up the alternate device node */
-	if (_primary_pwm_device)
+	if (_primary_pwm_device) {
 		unregister_driver(PWM_OUTPUT0_DEVICE_PATH);
+	}
 
 	/* tell the dtor that we are exiting */
 	_task = -1;
@@ -1162,8 +1218,7 @@ PX4IO::io_set_control_state(unsigned group)
 	bool changed = false;
 
 	switch (group) {
-		case 0:
-		{
+	case 0: {
 			orb_check(_t_actuator_controls_0, &changed);
 
 			if (changed) {
@@ -1172,8 +1227,8 @@ PX4IO::io_set_control_state(unsigned group)
 			}
 		}
 		break;
-		case 1:
-		{
+
+	case 1: {
 			orb_check(_t_actuator_controls_1, &changed);
 
 			if (changed) {
@@ -1181,8 +1236,8 @@ PX4IO::io_set_control_state(unsigned group)
 			}
 		}
 		break;
-		case 2:
-		{
+
+	case 2: {
 			orb_check(_t_actuator_controls_2, &changed);
 
 			if (changed) {
@@ -1190,8 +1245,8 @@ PX4IO::io_set_control_state(unsigned group)
 			}
 		}
 		break;
-		case 3:
-		{
+
+	case 3: {
 			orb_check(_t_actuator_controls_3, &changed);
 
 			if (changed) {
@@ -1323,8 +1378,9 @@ PX4IO::io_set_rc_config()
 	 */
 
 	/* fill the mapping with an error condition triggering value */
-	for (unsigned i = 0; i < _max_rc_input; i++)
+	for (unsigned i = 0; i < _max_rc_input; i++) {
 		input_map[i] = UINT8_MAX;
+	}
 
 	/*
 	 * NOTE: The indices for mapped channels are 1-based
@@ -1467,7 +1523,8 @@ PX4IO::io_handle_status(uint16_t status)
 	if (_status & PX4IO_P_STATUS_FLAGS_SAFETY_OFF && !(status & PX4IO_P_STATUS_FLAGS_SAFETY_OFF)
 	    && !(status & PX4IO_P_STATUS_FLAGS_ARM_SYNC)) {
 		/* set the arming flag */
-		ret = io_reg_modify(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_FLAGS, 0, PX4IO_P_STATUS_FLAGS_SAFETY_OFF | PX4IO_P_STATUS_FLAGS_ARM_SYNC);
+		ret = io_reg_modify(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_FLAGS, 0,
+				    PX4IO_P_STATUS_FLAGS_SAFETY_OFF | PX4IO_P_STATUS_FLAGS_ARM_SYNC);
 
 		/* set new status */
 		_status = status;
@@ -1518,10 +1575,12 @@ PX4IO::dsm_bind_ioctl(int dsmMode)
 {
 	if (!(_status & PX4IO_P_STATUS_FLAGS_SAFETY_OFF)) {
 		mavlink_log_info(_mavlink_fd, "[IO] binding DSM%s RX", (dsmMode == 0) ? "2" : ((dsmMode == 1) ? "-X" : "-X8"));
-		int ret = ioctl(nullptr, DSM_BIND_START, (dsmMode == 0) ? DSM2_BIND_PULSES : ((dsmMode == 1) ? DSMX_BIND_PULSES : DSMX8_BIND_PULSES));
+		int ret = ioctl(nullptr, DSM_BIND_START,
+				(dsmMode == 0) ? DSM2_BIND_PULSES : ((dsmMode == 1) ? DSMX_BIND_PULSES : DSMX8_BIND_PULSES));
 
-		if (ret)
+		if (ret) {
 			mavlink_log_critical(_mavlink_fd, "binding failed.");
+		}
 
 	} else {
 		mavlink_log_info(_mavlink_fd, "[IO] system armed, bind request rejected");
@@ -1617,8 +1676,9 @@ PX4IO::io_get_status()
 	 * in that order */
 	ret = io_reg_get(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_FLAGS, &regs[0], sizeof(regs) / sizeof(regs[0]));
 
-	if (ret != OK)
+	if (ret != OK) {
 		return ret;
+	}
 
 	io_handle_status(regs[0]);
 	io_handle_alarms(regs[1]);
@@ -1653,8 +1713,9 @@ PX4IO::io_get_raw_rc_input(rc_input_values &input_rc)
 	 */
 	ret = io_reg_get(PX4IO_PAGE_RAW_RC_INPUT, PX4IO_P_RAW_RC_COUNT, &regs[0], prolog + 9);
 
-	if (ret != OK)
+	if (ret != OK) {
 		return ret;
+	}
 
 	/*
 	 * Get the channel count any any extra channels. This is no more expensive than reading the
@@ -1692,8 +1753,9 @@ PX4IO::io_get_raw_rc_input(rc_input_values &input_rc)
 	if (channel_count > 9) {
 		ret = io_reg_get(PX4IO_PAGE_RAW_RC_INPUT, PX4IO_P_RAW_RC_BASE + 9, &regs[prolog + 9], channel_count - 9);
 
-		if (ret != OK)
+		if (ret != OK) {
 			return ret;
+	}
 	}
 
 	/* last thing set are the actual channel values as 16 bit values */
@@ -1703,8 +1765,8 @@ PX4IO::io_get_raw_rc_input(rc_input_values &input_rc)
 
 	/* get RSSI from input channel */
 	if (_rssi_pwm_chan > 0 && _rssi_pwm_chan <= input_rc_s::RC_INPUT_MAX_CHANNELS && _rssi_pwm_max - _rssi_pwm_min != 0) {
-		int rssi = (input_rc.values[_rssi_pwm_chan - 1] - _rssi_pwm_min) /
-			((_rssi_pwm_max - _rssi_pwm_min) / 100);
+		int rssi = ((input_rc.values[_rssi_pwm_chan - 1] - _rssi_pwm_min) * 100) /
+			   (_rssi_pwm_max - _rssi_pwm_min);
 		rssi = rssi > 100 ? 100 : rssi;
 		rssi = rssi < 0 ? 0 : rssi;
 		input_rc.rssi = rssi;
@@ -1725,8 +1787,9 @@ PX4IO::io_publish_raw_rc()
 
 	int ret = io_get_raw_rc_input(rc_val);
 
-	if (ret != OK)
+	if (ret != OK) {
 		return ret;
+	}
 
 	/* sort out the source of the values */
 	if (_status & PX4IO_P_STATUS_FLAGS_RC_PPM) {
@@ -1775,12 +1838,14 @@ PX4IO::io_publish_pwm_outputs()
 	uint16_t ctl[_max_actuators];
 	int ret = io_reg_get(PX4IO_PAGE_SERVOS, 0, ctl, _max_actuators);
 
-	if (ret != OK)
+	if (ret != OK) {
 		return ret;
+	}
 
 	/* convert from register format to float */
-	for (unsigned i = 0; i < _max_actuators; i++)
+	for (unsigned i = 0; i < _max_actuators; i++) {
 		outputs.output[i] = ctl[i];
+	}
 
 	outputs.noutputs = _max_actuators;
 
@@ -1799,8 +1864,9 @@ PX4IO::io_publish_pwm_outputs()
 	ret = io_reg_get(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_MIXER, &mixer_status,sizeof(mixer_status)/sizeof(uint16_t));
 	memcpy(&motor_limits,&mixer_status,sizeof(motor_limits));
 
-	if (ret != OK)
+	if (ret != OK) {
 		return ret;
+	}
 
 	/* publish mixer status */
 	if(_to_mixer_status == nullptr) {
@@ -1861,8 +1927,9 @@ PX4IO::io_reg_get(uint8_t page, uint8_t offset)
 {
 	uint16_t value;
 
-	if (io_reg_get(page, offset, &value, 1) != OK)
+	if (io_reg_get(page, offset, &value, 1) != OK) {
 		return _io_reg_get_error;
+	}
 
 	return value;
 }
@@ -1875,8 +1942,9 @@ PX4IO::io_reg_modify(uint8_t page, uint8_t offset, uint16_t clearbits, uint16_t 
 
 	ret = io_reg_get(page, offset, &value, 1);
 
-	if (ret != OK)
+	if (ret != OK) {
 		return ret;
+	}
 
 	value &= ~clearbits;
 	value |= setbits;
@@ -1947,8 +2015,9 @@ PX4IO::mixer_send(const char *buf, unsigned buflen, unsigned retries)
 		do {
 			unsigned count = buflen;
 
-			if (count > max_len)
+			if (count > max_len) {
 				count = max_len;
+			}
 
 			if (count > 0) {
 				memcpy(&msg->text[0], buf, count);
@@ -2004,11 +2073,11 @@ PX4IO::mixer_send(const char *buf, unsigned buflen, unsigned retries)
 
 		} while (buflen > 0);
 
-		/* ensure a closing newline */
+		int ret;
+
+		/* send the closing newline */
 		msg->text[0] = '\n';
 		msg->text[1] = '\0';
-
-		int ret;
 
 		for (int i = 0; i < 30; i++) {
 			/* failed, but give it a 2nd shot */
@@ -2021,26 +2090,24 @@ PX4IO::mixer_send(const char *buf, unsigned buflen, unsigned retries)
 			}
 		}
 
-		if (ret)
-			return ret;
+		if (ret == 0) {
+			/* success, exit */
+			break;
+		}
 
 		retries--;
 
-		DEVICE_LOG("mixer sent");
+	} while (retries > 0);
 
-	} while (retries > 0 && (!(io_reg_get(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_FLAGS) & PX4IO_P_STATUS_FLAGS_MIXER_OK)));
+	if (retries == 0) {
+		mavlink_and_console_log_info(_mavlink_fd, "[IO] mixer upload fail");
+		/* load must have failed for some reason */
+		return -EINVAL;
 
-	/* check for the mixer-OK flag */
-	if (io_reg_get(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_FLAGS) & PX4IO_P_STATUS_FLAGS_MIXER_OK) {
-		mavlink_log_info(_mavlink_fd, "[IO] mixer upload ok");
-		return 0;
+	} else {
+		/* all went well, set the mixer ok flag */
+		return io_reg_modify(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_FLAGS, 0, PX4IO_P_STATUS_FLAGS_MIXER_OK);
 	}
-
-	DEVICE_LOG("mixer rejected by IO");
-	mavlink_log_info(_mavlink_fd, "[IO] mixer upload fail");
-
-	/* load must have failed for some reason */
-	return -EINVAL;
 }
 
 void
@@ -2115,14 +2182,16 @@ PX4IO::print_status(bool extended_status)
 
 	printf("actuators");
 
-	for (unsigned i = 0; i < _max_actuators; i++)
+	for (unsigned i = 0; i < _max_actuators; i++) {
 		printf(" %hi", int16_t(io_reg_get(PX4IO_PAGE_ACTUATORS, i)));
+	}
 
 	printf("\n");
 	printf("servos");
 
-	for (unsigned i = 0; i < _max_actuators; i++)
+	for (unsigned i = 0; i < _max_actuators; i++) {
 		printf(" %u", io_reg_get(PX4IO_PAGE_SERVOS, i));
+	}
 
 	uint16_t pwm_invert_mask = io_reg_get(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_PWM_REVERSE);
 
@@ -2131,13 +2200,22 @@ PX4IO::print_status(bool extended_status)
 	for (unsigned i = 0; i < _max_actuators; i++) {
 		printf("%s", (pwm_invert_mask & (1 << i)) ? "x" : "_");
 	}
-	printf("]\n");
+
+	printf("]");
+
+	float trim_roll = REG_TO_FLOAT(io_reg_get(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_TRIM_ROLL));
+	float trim_pitch = REG_TO_FLOAT(io_reg_get(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_TRIM_PITCH));
+	float trim_yaw = REG_TO_FLOAT(io_reg_get(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_TRIM_YAW));
+
+	printf(" trims: r: %8.4f p: %8.4f y: %8.4f\n",
+	       (double)trim_roll, (double)trim_pitch, (double)trim_yaw);
 
 	uint16_t raw_inputs = io_reg_get(PX4IO_PAGE_RAW_RC_INPUT, PX4IO_P_RAW_RC_COUNT);
 	printf("%d raw R/C inputs", raw_inputs);
 
-	for (unsigned i = 0; i < raw_inputs; i++)
+	for (unsigned i = 0; i < raw_inputs; i++) {
 		printf(" %u", io_reg_get(PX4IO_PAGE_RAW_RC_INPUT, PX4IO_P_RAW_RC_BASE + i));
+	}
 
 	printf("\n");
 
@@ -2163,16 +2241,18 @@ PX4IO::print_status(bool extended_status)
 	printf("mapped R/C inputs 0x%04x", mapped_inputs);
 
 	for (unsigned i = 0; i < _max_rc_input; i++) {
-		if (mapped_inputs & (1 << i))
+		if (mapped_inputs & (1 << i)) {
 			printf(" %u:%d", i, REG_TO_SIGNED(io_reg_get(PX4IO_PAGE_RC_INPUT, PX4IO_P_RC_BASE + i)));
+	}
 	}
 
 	printf("\n");
 	uint16_t adc_inputs = io_reg_get(PX4IO_PAGE_CONFIG, PX4IO_P_CONFIG_ADC_INPUT_COUNT);
 	printf("ADC inputs");
 
-	for (unsigned i = 0; i < adc_inputs; i++)
+	for (unsigned i = 0; i < adc_inputs; i++) {
 		printf(" %u", io_reg_get(PX4IO_PAGE_RAW_ADC_INPUT, i));
+	}
 
 	printf("\n");
 
@@ -2215,8 +2295,9 @@ PX4IO::print_status(bool extended_status)
 	for (unsigned group = 0; group < 4; group++) {
 		printf("controls %u:", group);
 
-		for (unsigned i = 0; i < _max_controls; i++)
+		for (unsigned i = 0; i < _max_controls; i++) {
 			printf(" %d", (int16_t) io_reg_get(PX4IO_PAGE_CONTROLS, group * PX4IO_PROTOCOL_MAX_CONTROL_COUNT + i));
+		}
 
 		printf("\n");
 	}
@@ -2240,13 +2321,15 @@ PX4IO::print_status(bool extended_status)
 
 	printf("failsafe");
 
-	for (unsigned i = 0; i < _max_actuators; i++)
+	for (unsigned i = 0; i < _max_actuators; i++) {
 		printf(" %u", io_reg_get(PX4IO_PAGE_FAILSAFE_PWM, i));
+	}
 
 	printf("\ndisarmed values");
 
-	for (unsigned i = 0; i < _max_actuators; i++)
+	for (unsigned i = 0; i < _max_actuators; i++) {
 		printf(" %u", io_reg_get(PX4IO_PAGE_DISARMED_PWM, i));
+	}
 
 	printf("\n");
 }
@@ -2319,9 +2402,12 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 
 	case PWM_SERVO_SET_FAILSAFE_PWM: {
 		struct pwm_output_values* pwm = (struct pwm_output_values*)arg;
+
 		if (pwm->channel_count > _max_actuators)
 			/* fail with error */
+			{
 			return -E2BIG;
+			}
 
 		/* copy values to registers in IO */
 		ret = io_reg_set(PX4IO_PAGE_FAILSAFE_PWM, 0, pwm->values, pwm->channel_count);
@@ -2338,9 +2424,12 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 
 	case PWM_SERVO_SET_DISARMED_PWM: {
 		struct pwm_output_values* pwm = (struct pwm_output_values*)arg;
+
 		if (pwm->channel_count > _max_actuators)
 			/* fail with error */
+			{
 			return -E2BIG;
+			}
 
 		/* copy values to registers in IO */
 		ret = io_reg_set(PX4IO_PAGE_DISARMED_PWM, 0, pwm->values, pwm->channel_count);
@@ -2357,9 +2446,12 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 
 	case PWM_SERVO_SET_MIN_PWM: {
 		struct pwm_output_values* pwm = (struct pwm_output_values*)arg;
+
 		if (pwm->channel_count > _max_actuators)
 			/* fail with error */
+			{
 			return -E2BIG;
+			}
 
 		/* copy values to registers in IO */
 		ret = io_reg_set(PX4IO_PAGE_CONTROL_MIN_PWM, 0, pwm->values, pwm->channel_count);
@@ -2376,9 +2468,12 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 
 	case PWM_SERVO_SET_MAX_PWM: {
 		struct pwm_output_values* pwm = (struct pwm_output_values*)arg;
+
 		if (pwm->channel_count > _max_actuators)
 			/* fail with error */
+			{
 			return -E2BIG;
+			}
 
 		/* copy values to registers in IO */
 		ret = io_reg_set(PX4IO_PAGE_CONTROL_MAX_PWM, 0, pwm->values, pwm->channel_count);
@@ -2519,8 +2614,9 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 
 			*(uint32_t *)arg = io_reg_get(PX4IO_PAGE_PWM_INFO, PX4IO_RATE_MAP_BASE + channel);
 
-			if (*(uint32_t *)arg == _io_reg_get_error)
+			if (*(uint32_t *)arg == _io_reg_get_error) {
 				ret = -EIO;
+			}
 
 			break;
 		}
@@ -2530,8 +2626,9 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 			uint32_t bits = (1 << _max_relays) - 1;
 
 			/* don't touch relay1 if it's controlling RX vcc */
-			if (_dsm_vcc_ctl)
+			if (_dsm_vcc_ctl) {
 				bits &= ~PX4IO_P_SETUP_RELAYS_POWER1;
+			}
 
 			ret = io_reg_modify(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_RELAYS, bits, 0);
 #endif
@@ -2579,8 +2676,9 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 #ifdef CONFIG_ARCH_BOARD_PX4FMU_V1
 		*(uint32_t *)arg = io_reg_get(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_RELAYS);
 
-		if (*(uint32_t *)arg == _io_reg_get_error)
+		if (*(uint32_t *)arg == _io_reg_get_error) {
 			ret = -EIO;
+		}
 
 #endif
 #ifdef CONFIG_ARCH_BOARD_PX4FMU_V2
@@ -2608,8 +2706,9 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 
 			ret = io_reg_get(PX4IO_PAGE_STATUS, PX4IO_P_STATUS_FLAGS, &status, 1);
 
-			if (ret != OK)
+			if (ret != OK) {
 				break;
+			}
 
 			/* if no R/C input, don't try to fetch anything */
 			if (!(status & PX4IO_P_STATUS_FLAGS_RC_OK)) {
@@ -2645,8 +2744,9 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 		break;
 
 	case PX4IO_REBOOT_BOOTLOADER:
-		if (system_status() & PX4IO_P_STATUS_FLAGS_SAFETY_OFF)
+		if (system_status() & PX4IO_P_STATUS_FLAGS_SAFETY_OFF) {
 			return -EINVAL;
+		}
 
 		/* reboot into bootloader - arg must be PX4IO_REBOOT_BL_MAGIC */
 		io_reg_set(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_REBOOT_BL, arg);
@@ -2658,8 +2758,11 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 		/* check IO firmware CRC against passed value */
 		uint32_t io_crc = 0;
 		ret = io_reg_get(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_CRC, (uint16_t *)&io_crc, 2);
-		if (ret != OK)
+
+			if (ret != OK) {
 			return ret;
+			}
+
 		if (io_crc != arg) {
 			DEVICE_DEBUG("crc mismatch 0x%08x 0x%08x", (unsigned)io_crc, arg);
 			return -EINVAL;
@@ -2703,10 +2806,13 @@ PX4IO::ioctl(file * filep, int cmd, unsigned long arg)
 
 		if (arg == 1) {
 			ret = io_reg_modify(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_FEATURES, 0, PX4IO_P_SETUP_FEATURES_SBUS1_OUT);
+
 		} else if (arg == 2) {
 			ret = io_reg_modify(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_FEATURES, 0, PX4IO_P_SETUP_FEATURES_SBUS2_OUT);
+
 		} else {
-			ret = io_reg_modify(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_FEATURES, (PX4IO_P_SETUP_FEATURES_SBUS1_OUT | PX4IO_P_SETUP_FEATURES_SBUS2_OUT), 0);
+			ret = io_reg_modify(PX4IO_PAGE_SETUP, PX4IO_P_SETUP_FEATURES,
+					    (PX4IO_P_SETUP_FEATURES_SBUS1_OUT | PX4IO_P_SETUP_FEATURES_SBUS2_OUT), 0);
 		}
 
 		break;
@@ -2762,8 +2868,9 @@ PX4IO::write(file * /*filp*/, const char *buffer, size_t len)
 {
 	unsigned count = len / 2;
 
-	if (count > _max_actuators)
+	if (count > _max_actuators) {
 		count = _max_actuators;
+	}
 
 	if (count > 0) {
 
@@ -2771,8 +2878,9 @@ PX4IO::write(file * /*filp*/, const char *buffer, size_t len)
 		int ret = io_reg_set(PX4IO_PAGE_DIRECT_PWM, 0, (uint16_t *)buffer, count);
 		perf_end(_perf_write);
 
-		if (ret != OK)
+		if (ret != OK) {
 			return ret;
+	}
 	}
 
 	return count * 2;
@@ -2816,21 +2924,23 @@ get_interface()
 
 #ifndef CONFIG_ARCH_BOARD_PX4FMU_V1
 
-	/* try for a serial interface */
-	if (PX4IO_serial_interface != nullptr)
+#ifdef PX4IO_SERIAL_BASE
 		interface = PX4IO_serial_interface();
+#endif
 
-	if (interface != nullptr)
+	if (interface != nullptr) {
 		goto got;
+	}
 
 #endif
 
-	/* try for an I2C interface if we haven't got a serial one */
-	if (PX4IO_i2c_interface != nullptr)
+#ifdef PX4_I2C_OBDEV_PX4IO
 		interface = PX4IO_i2c_interface();
+#endif
 
-	if (interface != nullptr)
+	if (interface != nullptr) {
 		goto got;
+	}
 
 	errx(1, "cannot alloc interface");
 
@@ -2847,8 +2957,9 @@ got:
 void
 start(int argc, char *argv[])
 {
-	if (g_dev != nullptr)
+	if (g_dev != nullptr) {
 		errx(0, "already loaded");
+	}
 
 	/* allocate the interface */
 	device::Device *interface = get_interface();
@@ -2897,8 +3008,9 @@ start(int argc, char *argv[])
 void
 detect(int argc, char *argv[])
 {
-	if (g_dev != nullptr)
+	if (g_dev != nullptr) {
 		errx(0, "already loaded");
+	}
 
 	/* allocate the interface */
 	device::Device *interface = get_interface();
@@ -2906,8 +3018,9 @@ detect(int argc, char *argv[])
 	/* create the driver - it will set g_dev */
 	(void)new PX4IO(interface);
 
-	if (g_dev == nullptr)
+	if (g_dev == nullptr) {
 		errx(1, "driver alloc failed");
+	}
 
 	int ret = g_dev->detect();
 
@@ -2935,8 +3048,10 @@ checkcrc(int argc, char *argv[])
 		/* create the driver - it will set g_dev */
 		(void)new PX4IO(interface);
 
-		if (g_dev == nullptr)
+		if (g_dev == nullptr) {
 			errx(1, "driver alloc failed");
+		}
+
 	} else {
 		/* its already running, don't kill the driver */
 		keep_running = true;
@@ -2960,7 +3075,9 @@ checkcrc(int argc, char *argv[])
 	while (true) {
 		uint8_t buf[16];
 		int n = read(fd, buf, sizeof(buf));
-		if (n <= 0) break;
+
+		if (n <= 0) { break; }
+
 		fw_crc = crc32part(buf, n, fw_crc);
 		nbytes += n;
 	}
@@ -2991,32 +3108,43 @@ bind(int argc, char *argv[])
 {
 	int pulses;
 
-	if (g_dev == nullptr)
+	if (g_dev == nullptr) {
 		errx(1, "px4io must be started first");
+	}
 
 #ifdef CONFIG_ARCH_BOARD_PX4FMU_V1
 
-	if (!g_dev->get_dsm_vcc_ctl())
+	if (!g_dev->get_dsm_vcc_ctl()) {
 		errx(1, "DSM bind feature not enabled");
+	}
 
 #endif
 
-	if (argc < 3)
+	if (argc < 3) {
 		errx(0, "needs argument, use dsm2, dsmx or dsmx8");
+	}
 
-	if (!strcmp(argv[2], "dsm2"))
+	if (!strcmp(argv[2], "dsm2")) {
 		pulses = DSM2_BIND_PULSES;
-	else if (!strcmp(argv[2], "dsmx"))
+
+	} else if (!strcmp(argv[2], "dsmx")) {
 		pulses = DSMX_BIND_PULSES;
-	else if (!strcmp(argv[2], "dsmx8"))
+
+	} else if (!strcmp(argv[2], "dsmx8")) {
 		pulses = DSMX8_BIND_PULSES;
-	else
+
+	} else {
 		errx(1, "unknown parameter %s, use dsm2, dsmx or dsmx8", argv[2]);
+	}
+
 	// Test for custom pulse parameter
-	if (argc > 3)
+	if (argc > 3) {
 		pulses = atoi(argv[3]);
-	if (g_dev->system_status() & PX4IO_P_STATUS_FLAGS_SAFETY_OFF)
+	}
+
+	if (g_dev->system_status() & PX4IO_P_STATUS_FLAGS_SAFETY_OFF) {
 		errx(1, "system must not be armed");
+	}
 
 #ifdef CONFIG_ARCH_BOARD_PX4FMU_V1
 	warnx("This command will only bind DSM if satellite VCC (red wire) is controlled by relay 1.");
@@ -3038,23 +3166,29 @@ test(void)
 
 	fd = open(PX4IO_DEVICE_PATH, O_WRONLY);
 
-	if (fd < 0)
+	if (fd < 0) {
 		err(1, "failed to open device");
+	}
 
-	if (ioctl(fd, PWM_SERVO_GET_COUNT, (unsigned long)&servo_count))
+	if (ioctl(fd, PWM_SERVO_GET_COUNT, (unsigned long)&servo_count)) {
 		err(1, "failed to get servo count");
+	}
 
 	/* tell IO that its ok to disable its safety with the switch */
 	ret = ioctl(fd, PWM_SERVO_SET_ARM_OK, 0);
 
-	if (ret != OK)
+	if (ret != OK) {
 		err(1, "PWM_SERVO_SET_ARM_OK");
+	}
 
-	if (ioctl(fd, PWM_SERVO_ARM, 0))
+	if (ioctl(fd, PWM_SERVO_ARM, 0)) {
 		err(1, "failed to arm servos");
+	}
 
 	struct pollfd fds;
+
 	fds.fd = 0; /* stdin */
+
 	fds.events = POLLIN;
 
 	warnx("Press CTRL-C or 'c' to abort.");
@@ -3064,13 +3198,15 @@ test(void)
 		/* sweep all servos between 1000..2000 */
 		servo_position_t servos[servo_count];
 
-		for (unsigned i = 0; i < servo_count; i++)
+		for (unsigned i = 0; i < servo_count; i++) {
 			servos[i] = pwm_value;
+		}
 
 		ret = write(fd, servos, sizeof(servos));
 
-		if (ret != (int)sizeof(servos))
+		if (ret != (int)sizeof(servos)) {
 			err(1, "error writing PWM servo data, wrote %u got %d", sizeof(servos), ret);
+		}
 
 		if (direction > 0) {
 			if (pwm_value < 2000) {
@@ -3093,11 +3229,13 @@ test(void)
 		for (unsigned i = 0; i < servo_count; i++) {
 			servo_position_t value;
 
-			if (ioctl(fd, PWM_SERVO_GET(i), (unsigned long)&value))
+			if (ioctl(fd, PWM_SERVO_GET(i), (unsigned long)&value)) {
 				err(1, "error reading PWM servo %d", i);
+			}
 
-			if (value != servos[i])
+			if (value != servos[i]) {
 				errx(1, "servo %d readback error, got %u expected %u", i, value, servos[i]);
+		}
 		}
 
 		/* Check if user wants to quit */
@@ -3211,8 +3349,9 @@ lockdown(int argc, char *argv[])
 					usleep(10000);
 				}
 
-				if (hrt_elapsed_time(&start) > timeout)
+			if (hrt_elapsed_time(&start) > timeout) {
 					errx(1, "TIMEOUT! ABORTED WITHOUT CHANGES.");
+			}
 
 				(void)g_dev->ioctl(0, PWM_SERVO_SET_DISABLE_LOCKDOWN, 1);
 
@@ -3234,17 +3373,21 @@ int
 px4io_main(int argc, char *argv[])
 {
 	/* check for sufficient number of arguments */
-	if (argc < 2)
+	if (argc < 2) {
 		goto out;
+	}
 
-	if (!strcmp(argv[1], "start"))
+	if (!strcmp(argv[1], "start")) {
 		start(argc - 1, argv + 1);
+	}
 
-	if (!strcmp(argv[1], "detect"))
+	if (!strcmp(argv[1], "detect")) {
 		detect(argc - 1, argv + 1);
+	}
 
-	if (!strcmp(argv[1], "checkcrc"))
+	if (!strcmp(argv[1], "checkcrc")) {
 		checkcrc(argc - 1, argv + 1);
+	}
 
 	if (!strcmp(argv[1], "update")) {
 
@@ -3265,12 +3408,12 @@ px4io_main(int argc, char *argv[])
 
 		} else {
 #if defined(CONFIG_ARCH_BOARD_PX4FMU_V1)
-			fn[0] = "/etc/extras/px4io-v1_default.bin";
+			fn[0] = "/etc/extras/px4io-v1.bin";
 			fn[1] =	"/fs/microsd/px4io1.bin";
 			fn[2] =	"/fs/microsd/px4io.bin";
 			fn[3] =	nullptr;
 #elif defined(CONFIG_ARCH_BOARD_PX4FMU_V2)
-			fn[0] = "/etc/extras/px4io-v2_default.bin";
+			fn[0] = "/etc/extras/px4io-v2.bin";
 			fn[1] =	"/fs/microsd/px4io2.bin";
 			fn[2] =	"/fs/microsd/px4io.bin";
 			fn[3] =	nullptr;
@@ -3308,8 +3451,9 @@ px4io_main(int argc, char *argv[])
 	}
 
 	if (!strcmp(argv[1], "iftest")) {
-		if (g_dev != nullptr)
+		if (g_dev != nullptr) {
 			errx(1, "can't iftest when started");
+		}
 
 		if_test((argc > 2) ? strtol(argv[2], NULL, 0) : 0);
 	}
@@ -3361,8 +3505,9 @@ px4io_main(int argc, char *argv[])
 
 	/* commands below here require a started driver */
 
-	if (g_dev == nullptr)
+	if (g_dev == nullptr) {
 		errx(1, "not started");
+	}
 
 	if (!strcmp(argv[1], "limit")) {
 
@@ -3471,20 +3616,25 @@ px4io_main(int argc, char *argv[])
 	    !strcmp(argv[1], "rx_dsm_10bit") ||
 	    !strcmp(argv[1], "rx_dsm_11bit") ||
 	    !strcmp(argv[1], "rx_sbus") ||
-	    !strcmp(argv[1], "rx_ppm"))
+	    !strcmp(argv[1], "rx_ppm")) {
 		errx(0, "receiver type is automatically detected, option '%s' is deprecated", argv[1]);
+	}
 
-	if (!strcmp(argv[1], "test"))
+	if (!strcmp(argv[1], "test")) {
 		test();
+	}
 
-	if (!strcmp(argv[1], "monitor"))
+	if (!strcmp(argv[1], "monitor")) {
 		monitor();
+	}
 
-	if (!strcmp(argv[1], "bind"))
+	if (!strcmp(argv[1], "bind")) {
 		bind(argc, argv);
+	}
 
-	if (!strcmp(argv[1], "lockdown"))
+	if (!strcmp(argv[1], "lockdown")) {
 		lockdown(argc, argv);
+	}
 
 	if (!strcmp(argv[1], "sbus1_out")) {
 		/* we can cheat and call the driver directly, as it
