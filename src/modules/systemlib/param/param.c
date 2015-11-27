@@ -63,6 +63,9 @@
 
 #include "uORB/uORB.h"
 #include "uORB/topics/parameter_update.h"
+#include "px4_parameters.h"
+
+#include <crc32.h>
 
 #if 0
 # define debug(fmt, args...)		do { warnx(fmt, ##args); } while(0)
@@ -86,12 +89,11 @@ extern struct param_info_s	param_array[];
 extern struct param_info_s	*param_info_base;
 extern struct param_info_s	*param_info_limit;
 #else
-extern char __param_start, __param_end;
-static const struct param_info_s *param_info_base = (struct param_info_s *) &__param_start;
-static const struct param_info_s *param_info_limit = (struct param_info_s *) &__param_end;
+// FIXME - start and end are reversed
+static const struct param_info_s *param_info_base = (const struct param_info_s *) &px4_parameters;
 #endif
 
-#define	param_info_count		((unsigned)(param_info_limit - param_info_base))
+#define	param_info_count		px4_parameters.param_count
 
 /**
  * Storage for modified parameters.
@@ -115,6 +117,13 @@ get_param_info_count(void)
 	if (!param_changed_storage) {
 		size_param_changed_storage_bytes  = (param_info_count / bits_per_allocation_unit) + 1;
 		param_changed_storage = calloc(size_param_changed_storage_bytes, 1);
+
+		/* If the allocation fails we need to indicate failure in the
+		 * API by returning PARAM_INVALID
+		 */
+		if (param_changed_storage == NULL) {
+			return 0;
+		}
 	}
 
 	return param_info_count;
@@ -140,14 +149,14 @@ static param_t param_find_internal(const char *name, bool notification);
 static void
 param_lock(void)
 {
-	//do {} while (sem_wait(&param_sem) != 0);
+	//do {} while (px4_sem_wait(&param_sem) != 0);
 }
 
 /** unlock the parameter store */
 static void
 param_unlock(void)
 {
-	//sem_post(&param_sem);
+	//px4_sem_post(&param_sem);
 }
 
 /** assert that the parameter store is locked */
@@ -166,7 +175,8 @@ param_assert_locked(void)
 static bool
 handle_in_range(param_t param)
 {
-	return (param < get_param_info_count());
+	int count = get_param_info_count();
+	return (count && param < count);
 }
 
 /**
@@ -247,6 +257,7 @@ param_find_internal(const char *name, bool notification)
 	param_t param;
 
 	/* perform a linear search of the known parameters */
+
 	for (param = 0; handle_in_range(param); param++) {
 		if (!strcmp(param_info_base[param].name, name)) {
 			if (notification) {
@@ -282,14 +293,16 @@ param_count(void)
 unsigned
 param_count_used(void)
 {
-	// ensure the allocation has been done
-	get_param_info_count();
 	unsigned count = 0;
 
-	for (unsigned i = 0; i < size_param_changed_storage_bytes; i++) {
-		for (unsigned j = 0; j < bits_per_allocation_unit; j++) {
-			if (param_changed_storage[i] & (1 << j)) {
-				count++;
+	// ensure the allocation has been done
+	if (get_param_info_count()) {
+
+		for (unsigned i = 0; i < size_param_changed_storage_bytes; i++) {
+			for (unsigned j = 0; j < bits_per_allocation_unit; j++) {
+				if (param_changed_storage[i] & (1 << j)) {
+					count++;
+				}
 			}
 		}
 	}
@@ -300,7 +313,9 @@ param_count_used(void)
 param_t
 param_for_index(unsigned index)
 {
-	if (index < get_param_info_count()) {
+	unsigned count = get_param_info_count();
+
+	if (count && index < count) {
 		return (param_t)index;
 	}
 
@@ -310,23 +325,24 @@ param_for_index(unsigned index)
 param_t
 param_for_used_index(unsigned index)
 {
-	if (index < get_param_info_count()) {
+	int count = get_param_info_count();
 
-		/* walk all params and count */
-		int count = 0;
+	if (count && index < count) {
+		/* walk all params and count used params */
+		unsigned used_count = 0;
 
 		for (unsigned i = 0; i < (unsigned)size_param_changed_storage_bytes; i++) {
-			for (unsigned j = 0; j < 8; j++) {
+			for (unsigned j = 0; j < bits_per_allocation_unit; j++) {
 				if (param_changed_storage[i] & (1 << j)) {
 
 					/* we found the right used count,
 					 * return the param value
 					 */
-					if (index == count) {
-						return (param_t)(i * 8 + j);
+					if (index == used_count) {
+						return (param_t)(i * bits_per_allocation_unit + j);
 					}
 
-					count++;
+					used_count++;
 				}
 			}
 		}
@@ -354,17 +370,17 @@ param_get_used_index(param_t param)
 	}
 
 	/* walk all params and count, now knowing that it has a valid index */
-	int count = 0;
+	int used_count = 0;
 
 	for (unsigned i = 0; i < (unsigned)size_param_changed_storage_bytes; i++) {
-		for (unsigned j = 0; j < 8; j++) {
+		for (unsigned j = 0; j < bits_per_allocation_unit; j++) {
 			if (param_changed_storage[i] & (1 << j)) {
 
-				if ((unsigned)param == i * 8 + j) {
-					return count;
+				if ((unsigned)param == i * bits_per_allocation_unit + j) {
+					return used_count;
 				}
 
-				count++;
+				used_count++;
 			}
 		}
 	}
@@ -682,7 +698,7 @@ param_reset_excludes(const char *excludes[], int num_excludes)
 	param_notify_changes();
 }
 
-static const char *param_default_file = "/eeprom/parameters";
+static const char *param_default_file = PX4_ROOTFSDIR"/eeprom/parameters";
 static char *param_user_file = NULL;
 
 int
@@ -715,7 +731,7 @@ param_save_default(void)
 	const char *filename = param_get_default_file();
 
 	/* write parameters to temp file */
-	fd = PARAM_OPEN(filename, O_WRONLY | O_CREAT, 0x777);
+	fd = PARAM_OPEN(filename, O_WRONLY | O_CREAT, PX4_O_MODE_666);
 
 	if (fd < 0) {
 		warn("failed to open param file: %s", filename);
@@ -1020,4 +1036,27 @@ param_foreach(void (*func)(void *arg, param_t param), void *arg, bool only_chang
 
 		func(arg, param);
 	}
+}
+
+uint32_t param_hash_check(void)
+{
+	uint32_t param_hash = 0;
+
+	param_lock();
+
+	/* compute the CRC32 over all string param names and 4 byte values */
+	for (param_t param = 0; handle_in_range(param); param++) {
+		if (!param_used(param)) {
+			continue;
+		}
+
+		const char *name = param_name(param);
+		const void *val = param_get_value_ptr(param);
+		param_hash = crc32part((const uint8_t *)name, strlen(name), param_hash);
+		param_hash = crc32part(val, sizeof(union param_value_u), param_hash);
+	}
+
+	param_unlock();
+
+	return param_hash;
 }
