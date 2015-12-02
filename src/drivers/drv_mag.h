@@ -64,6 +64,7 @@ struct mag_report {
 	float range_ga;
 	float scaling;
 	float temperature;
+	bool is_saturated;
 
 	int16_t x_raw;
 	int16_t y_raw;

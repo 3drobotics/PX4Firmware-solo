@@ -895,17 +895,6 @@ HMC5883::collect()
 	report.y = (((int16_t)hmc_report.y[0]) << 8) + hmc_report.y[1];
 	report.z = (((int16_t)hmc_report.z[0]) << 8) + hmc_report.z[1];
 
-	/*
-	 * If any of the values are -4096, there was an internal math error in the sensor.
-	 * Generalise this to a simple range check that will also catch some bit errors.
-	 */
-	if ((abs(report.x) > 2048) ||
-	    (abs(report.y) > 2048) ||
-	    (abs(report.z) > 2048)) {
-		perf_count(_comms_errors);
-		goto out;
-	}
-
 	/* get measurements from the device */
 	new_report.temperature = 0;
 	if (_conf_reg & HMC5983_TEMP_SENSOR_ENABLE) {
@@ -956,6 +945,19 @@ HMC5883::collect()
 	/* z remains z */
 	new_report.z_raw = report.z;
 
+	/*
+	 * If any of the values are -4096, there was an internal math error in the sensor.
+	 * Generalise this to a simple range check that will also catch some bit errors.
+	 */
+	if ((abs(report.x) > 2048) ||
+	    (abs(report.y) > 2048) ||
+	    (abs(report.z) > 2048)) {
+		new_report.is_saturated = true;
+		perf_count(_comms_errors);
+		goto send;
+	} else{
+		new_report.is_saturated = false;
+	}
 	/* scale values for output */
 
 	// XXX revisit for SPI part, might require a bus type IOCTL
@@ -984,6 +986,7 @@ HMC5883::collect()
 	/* z remains z */
 	new_report.z = ((zraw_f * _range_scale) - _scale.z_offset) * _scale.z_scale;
 
+send:
 	if (!(_pub_blocked)) {
 
 		if (_mag_topic != -1) {
@@ -1024,7 +1027,6 @@ HMC5883::collect()
 	}
 
 	ret = OK;
-
 out:
 	perf_end(_sample_perf);
 	return ret;
