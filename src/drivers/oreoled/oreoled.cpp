@@ -122,6 +122,8 @@ private:
 
 	uint8_t			cmd_add_checksum(oreoled_cmd_t *cmd);
 
+	int				queue_cmd(oreoled_cmd_t *cmd);
+
 	/* internal variables */
 	work_s			_work;							///< work queue for scheduling reads
 	bool			_healthy[OREOLED_NUM_LEDS];		///< health of each LED
@@ -348,7 +350,7 @@ OREOLED::startup_discovery(void)
 
 			/* prepare command to turn off LED */
 			cmd.led_num = i;
-			cmd.buff[0] = 0xAA;
+			cmd.buff[0] = OREOLED_PATTERN_PING;
 			cmd.buff[1] = 0x55;
 			cmd.buff[2] = OREOLED_PATTERN_OFF;
 			cmd.num_bytes = 3;
@@ -399,73 +401,117 @@ OREOLED::cmd_add_checksum(oreoled_cmd_t *cmd)
 }
 
 int
+OREOLED::queue_cmd(oreoled_cmd_t *cmd)
+{
+	int ret = -EINVAL;
+
+	/* special handling for request to set all instances rgb values */
+	if (cmd->led_num == OREOLED_ALL_INSTANCES) {
+		for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
+			/* add command to queue for all healthy leds */
+			if (_healthy[i]) {
+				cmd->led_num = i;
+				_cmd_queue->force(cmd);
+				ret = OK;
+			}
+		}
+
+	} else if (cmd->led_num < OREOLED_NUM_LEDS) {
+		/* request to set individual instance's rgb value */
+		if (_healthy[cmd->led_num]) {
+			_cmd_queue->force(cmd);
+			ret = OK;
+		}
+	}
+
+	return ret;
+}
+
+int
 OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 {
 	int ret = -ENODEV;
 	oreoled_cmd_t new_cmd;
 
 	switch (cmd) {
-	case OREOLED_SET_RGB:
-		/* set the specified color */
-		new_cmd.led_num = ((oreoled_rgbset_t *) arg)->instance;
-		new_cmd.buff[0] = ((oreoled_rgbset_t *) arg)->pattern;
+	case OREOLED_SET_PATTERN: {
+		/* set the specified pattern and parameters */
+		oreoled_patternset_t * pattern_args = (oreoled_patternset_t *) arg;
+		new_cmd.led_num = pattern_args->instance;
+		new_cmd.buff[0] = pattern_args->pattern;
 		new_cmd.buff[1] = OREOLED_PARAM_BIAS_RED;
-		new_cmd.buff[2] = ((oreoled_rgbset_t *) arg)->red;
+		new_cmd.buff[2] = pattern_args->bias_red;
 		new_cmd.buff[3] = OREOLED_PARAM_BIAS_GREEN;
-		new_cmd.buff[4] = ((oreoled_rgbset_t *) arg)->green;
+		new_cmd.buff[4] = pattern_args->bias_green;
 		new_cmd.buff[5] = OREOLED_PARAM_BIAS_BLUE;
-		new_cmd.buff[6] = ((oreoled_rgbset_t *) arg)->blue;
+		new_cmd.buff[6] = pattern_args->bias_blue;
+		new_cmd.buff[7] = OREOLED_PARAM_AMPLITUDE_RED;
+		new_cmd.buff[8] = pattern_args->amplitude_red;
+		new_cmd.buff[9] = OREOLED_PARAM_AMPLITUDE_GREEN;
+		new_cmd.buff[10] = pattern_args->amplitude_green;
+		new_cmd.buff[11] = OREOLED_PARAM_AMPLITUDE_BLUE;
+		new_cmd.buff[12] = pattern_args->amplitude_blue;
+		new_cmd.buff[13] = OREOLED_PARAM_PERIOD;
+		new_cmd.buff[14] = pattern_args->period >> 8;
+		new_cmd.buff[15] = pattern_args->period & 0xFF;
+		new_cmd.buff[16] = OREOLED_PARAM_REPEAT;
+		new_cmd.buff[17] = pattern_args->repeat;
+		new_cmd.buff[18] = OREOLED_PARAM_PHASEOFFSET;
+		new_cmd.buff[19] = pattern_args->phase_offset >> 8;
+		new_cmd.buff[20] = pattern_args->phase_offset & 0xFF;
+		new_cmd.num_bytes = 21;
+
+		return queue_cmd(&new_cmd);
+	}
+
+	case OREOLED_UPDATE_PARAM: {
+		/* update the specified pattern parameter */
+		oreoled_paramupdate_t * paramupdate_args = (oreoled_paramupdate_t *) arg;
+		new_cmd.led_num = paramupdate_args->instance;
+		new_cmd.buff[0] = OREOLED_PATTERN_PARAMUPDATE;
+		new_cmd.buff[1] = paramupdate_args->param;
+
+		/* OREOLED_PARAM_PERIOD and OREOLED_PARAM_PHASEOFFSET values are 16bit */
+		if (paramupdate_args->param == OREOLED_PARAM_PERIOD ||
+				paramupdate_args->param == OREOLED_PARAM_PHASEOFFSET) {
+			new_cmd.buff[2] = paramupdate_args->value >> 8;
+			new_cmd.buff[3] = paramupdate_args->value & 0xFF;
+			new_cmd.num_bytes = 4;
+		} else {
+			new_cmd.buff[2] = paramupdate_args->value;
+			new_cmd.num_bytes = 3;
+		}
+
+		return queue_cmd(&new_cmd);
+	}
+
+	case OREOLED_SET_RGB: {
+		/* set the specified color */
+		oreoled_rgbset_t * rgb_args = (oreoled_rgbset_t *) arg;
+		new_cmd.led_num = rgb_args->instance;
+		new_cmd.buff[0] = rgb_args->pattern;
+		new_cmd.buff[1] = OREOLED_PARAM_BIAS_RED;
+		new_cmd.buff[2] = rgb_args->red;
+		new_cmd.buff[3] = OREOLED_PARAM_BIAS_GREEN;
+		new_cmd.buff[4] = rgb_args->green;
+		new_cmd.buff[5] = OREOLED_PARAM_BIAS_BLUE;
+		new_cmd.buff[6] = rgb_args->blue;
 		new_cmd.num_bytes = 7;
 
-		/* special handling for request to set all instances rgb values */
-		if (new_cmd.led_num == OREOLED_ALL_INSTANCES) {
-			for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-				/* add command to queue for all healthy leds */
-				if (_healthy[i]) {
-					new_cmd.led_num = i;
-					_cmd_queue->force(&new_cmd);
-					ret = OK;
-				}
-			}
+		return queue_cmd(&new_cmd);
+	}
 
-		} else if (new_cmd.led_num < OREOLED_NUM_LEDS) {
-			/* request to set individual instance's rgb value */
-			if (_healthy[new_cmd.led_num]) {
-				_cmd_queue->force(&new_cmd);
-				ret = OK;
-			}
-		}
-
-		return ret;
-
-	case OREOLED_RUN_MACRO:
+	case OREOLED_RUN_MACRO: {
 		/* run a macro */
-		new_cmd.led_num = ((oreoled_macrorun_t *) arg)->instance;
+		oreoled_macrorun_t * macro_args = (oreoled_macrorun_t *) arg;
+		new_cmd.led_num = macro_args->instance;
 		new_cmd.buff[0] = OREOLED_PATTERN_PARAMUPDATE;
 		new_cmd.buff[1] = OREOLED_PARAM_MACRO;
-		new_cmd.buff[2] = ((oreoled_macrorun_t *) arg)->macro;
+		new_cmd.buff[2] = macro_args->macro;
 		new_cmd.num_bytes = 3;
 
-		/* special handling for request to set all instances */
-		if (new_cmd.led_num == OREOLED_ALL_INSTANCES) {
-			for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-				/* add command to queue for all healthy leds */
-				if (_healthy[i]) {
-					new_cmd.led_num = i;
-					_cmd_queue->force(&new_cmd);
-					ret = OK;
-				}
-			}
-
-		} else if (new_cmd.led_num < OREOLED_NUM_LEDS) {
-			/* request to set individual instance's rgb value */
-			if (_healthy[new_cmd.led_num]) {
-				_cmd_queue->force(&new_cmd);
-				ret = OK;
-			}
-		}
-
-		return ret;
+		return queue_cmd(&new_cmd);
+	}
 
 	case OREOLED_SEND_RESET:
 		/* send a reset */
@@ -479,31 +525,6 @@ OREOLED::ioctl(struct file *filp, int cmd, unsigned long arg)
 			/* add command to queue for all healthy leds */
 			if (_healthy[i]) {
 				new_cmd.led_num = i;
-				_cmd_queue->force(&new_cmd);
-				ret = OK;
-			}
-		}
-
-		return ret;
-
-	case OREOLED_SEND_BYTES:
-		/* send bytes */
-		new_cmd = *((oreoled_cmd_t *) arg);
-
-		/* special handling for request to set all instances */
-		if (new_cmd.led_num == OREOLED_ALL_INSTANCES) {
-			for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
-				/* add command to queue for all healthy leds */
-				if (_healthy[i]) {
-					new_cmd.led_num = i;
-					_cmd_queue->force(&new_cmd);
-					ret = OK;
-				}
-			}
-
-		} else if (new_cmd.led_num < OREOLED_NUM_LEDS) {
-			/* request to set individual instance's rgb value */
-			if (_healthy[new_cmd.led_num]) {
 				_cmd_queue->force(&new_cmd);
 				ret = OK;
 			}

@@ -277,7 +277,7 @@ OREOLED_BOOTLOADER_AVR::discover(void)
 {
 	/* prepare command to turn off LED */
 	/* add two bytes of pre-amble to for higher signal to noise ratio */
-	uint8_t msg[] = {0xAA, 0x55, OREOLED_PATTERN_OFF, 0x00};
+	uint8_t msg[] = {OREOLED_PATTERN_PING, 0x55, OREOLED_PATTERN_OFF, 0x00};
 
 	/* attempt to contact each unhealthy LED */
 	for (uint8_t i = 0; i < OREOLED_NUM_LEDS; i++) {
@@ -453,7 +453,7 @@ OREOLED_BOOTLOADER_AVR::app_ping(const int led_num)
 	set_address(OREOLED_BASE_I2C_ADDR + boot_cmd.led_num);
 
 	/* send a pattern off command */
-	boot_cmd.buff[0] = 0xAA;
+	boot_cmd.buff[0] = OREOLED_PATTERN_PING;
 	boot_cmd.buff[1] = 0x55;
 	boot_cmd.buff[2] = OREOLED_PATTERN_OFF;
 	boot_cmd.buff[3] = OREOLED_BASE_I2C_ADDR + boot_cmd.led_num;

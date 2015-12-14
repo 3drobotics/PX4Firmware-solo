@@ -52,20 +52,23 @@
 #define _OREOLEDIOCBASE		(0x2d00)
 #define _OREOLEDIOC(_n)		(_IOC(_OREOLEDIOCBASE, _n))
 
-/** set constant RGB values */
-#define OREOLED_SET_RGB			_OREOLEDIOC(1)
+/** set pattern */
+#define OREOLED_SET_PATTERN		_OREOLEDIOC(1)
+
+/** update pattern parameter */
+#define OREOLED_UPDATE_PARAM	_OREOLEDIOC(2)
+
+/** set constant RGB value */
+#define OREOLED_SET_RGB				_OREOLEDIOC(3)
 
 /** run macro */
-#define OREOLED_RUN_MACRO		_OREOLEDIOC(2)
-
-/** send bytes */
-#define OREOLED_SEND_BYTES		_OREOLEDIOC(3)
+#define OREOLED_RUN_MACRO			_OREOLEDIOC(4)
 
 /** send reset */
-#define OREOLED_SEND_RESET		_OREOLEDIOC(4)
+#define OREOLED_SEND_RESET		_OREOLEDIOC(5)
 
 /** force an i2c gencall */
-#define OREOLED_FORCE_SYNC		_OREOLEDIOC(5)
+#define OREOLED_FORCE_SYNC		_OREOLEDIOC(6)
 
 /* Oreo LED driver supports up to 4 leds */
 #define OREOLED_NUM_LEDS		4
@@ -89,14 +92,17 @@
  *	defined by hardware */
 enum oreoled_pattern {
 	OREOLED_PATTERN_OFF = 0,
-	OREOLED_PATTERN_SINE = 1,
+	OREOLED_PATTERN_BREATHE = 1,
 	OREOLED_PATTERN_SOLID = 2,
 	OREOLED_PATTERN_SIREN = 3,
 	OREOLED_PATTERN_STROBE = 4,
-	OREOLED_PATTERN_FADEIN = 5,
-	OREOLED_PATTERN_FADEOUT = 6,
-	OREOLED_PATTERN_PARAMUPDATE = 7,
-	OREOLED_PATTERN_ENUM_COUNT
+	OREOLED_PATTERN_AVIATION_STROBE = 5,
+	OREOLED_PATTERN_FADEIN = 6,
+	OREOLED_PATTERN_FADEOUT = 7,
+	OREOLED_PATTERN_PARAMUPDATE = 8,
+	/* OREOLED_PATTERN_FWUPDATE = 9, use OREOLED_PARAM_MACRO_FWUPDATE instead */
+	OREOLED_PATTERN_ENUM_COUNT,
+	OREOLED_PATTERN_PING = 0xAA			// Special byte sent by the oreoled master startup sequence
 };
 
 /* enum passed to OREOLED_SET_MODE ioctl()
@@ -121,20 +127,41 @@ enum oreoled_param {
  * 	defined by hardware */
 enum oreoled_macro {
 	OREOLED_PARAM_MACRO_RESET = 0,
-	OREOLED_PARAM_MACRO_COLOUR_CYCLE = 1,
-	OREOLED_PARAM_MACRO_BREATH = 2,
-	OREOLED_PARAM_MACRO_STROBE = 3,
-	OREOLED_PARAM_MACRO_FADEIN = 4,
-	OREOLED_PARAM_MACRO_FADEOUT = 5,
-	OREOLED_PARAM_MACRO_RED = 6,
-	OREOLED_PARAM_MACRO_GREEN = 7,
-	OREOLED_PARAM_MACRO_BLUE = 8,
-	OREOLED_PARAM_MACRO_YELLOW = 9,
-	OREOLED_PARAM_MACRO_WHITE = 10,
-	OREOLED_PARAM_MACRO_AUTOMOBILE = 11,
-	OREOLED_PARAM_MACRO_AVIATION = 12,
+	OREOLED_PARAM_MACRO_FWUPDATE = 1,
+	OREOLED_PARAM_MACRO_BREATHE = 2,
+	OREOLED_PARAM_MACRO_FADE_OUT = 3,
+	OREOLED_PARAM_MACRO_AMBER = 4,
+	OREOLED_PARAM_MACRO_WHITE = 5,
+	OREOLED_PARAM_MACRO_AUTOMOBILE = 6,
+	OREOLED_PARAM_MACRO_AVIATION = 7,
 	OREOLED_PARAM_MACRO_ENUM_COUNT
 };
+
+/*
+  structure passed to OREOLED_SET_PATTERN ioctl()
+ */
+typedef struct {
+	uint8_t instance;
+	oreoled_pattern pattern;
+	uint8_t bias_red;
+	uint8_t bias_green;
+	uint8_t bias_blue;
+	uint8_t amplitude_red;
+	uint8_t amplitude_green;
+	uint8_t amplitude_blue;
+	uint16_t period;
+	int8_t repeat;
+	uint16_t phase_offset;
+} oreoled_patternset_t;
+
+/*
+  structure passed to OREOLED_UPDATE_PARAM ioctl()
+ */
+typedef struct {
+	uint8_t instance;
+	oreoled_param param;
+	uint16_t value;
+} oreoled_paramupdate_t;
 
 /*
   structure passed to OREOLED_SET_RGB ioctl()
@@ -158,11 +185,10 @@ typedef struct {
 } oreoled_macrorun_t;
 
 /*
-  structure passed to send_bytes method (only used for testing)
+  structure used for storing raw commands
  */
 typedef struct {
 	uint8_t led_num;
 	uint8_t num_bytes;
 	uint8_t buff[OREOLED_CMD_LENGTH_MAX];
 } oreoled_cmd_t;
-
