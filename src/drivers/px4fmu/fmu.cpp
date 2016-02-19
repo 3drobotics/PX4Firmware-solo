@@ -645,8 +645,8 @@ PX4FMU::cycle()
 
 		update_pwm_rev_mask();
 
-#ifdef SBUS_SERIAL_PORT
-		_sbus_fd = sbus_init(SBUS_SERIAL_PORT, true);
+#ifdef RC_SERIAL_PORT
+		_sbus_fd = sbus_init(RC_SERIAL_PORT, true);
 #endif
 
 	#ifdef DSM_SERIAL_PORT
@@ -812,7 +812,7 @@ PX4FMU::cycle()
 
 	bool rc_updated = false;
 
-#ifdef SBUS_SERIAL_PORT
+#ifdef RC_SERIAL_PORT
 	bool sbus_failsafe, sbus_frame_drop;
 	uint16_t raw_rc_values[input_rc_s::RC_INPUT_MAX_CHANNELS];
 	uint16_t raw_rc_count;
