@@ -52,5 +52,6 @@ __EXPORT bool	sbus_input(int sbus_fd, uint16_t *values, uint16_t *num_values, bo
 			   uint16_t max_channels);
 __EXPORT void	sbus1_output(int sbus_fd, uint16_t *values, uint16_t num_values);
 __EXPORT void	sbus2_output(int sbus_fd, uint16_t *values, uint16_t num_values);
+__EXPORT void	sbus1_set_output_rate_hz(uint16_t rate_hz);
 
 __END_DECLS
